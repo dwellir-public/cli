@@ -1,0 +1,55 @@
+version: 2
+
+project_name: dwellir
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/dwellir
+    binary: dwellir
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/dwellir-public/cli/internal/cli.Version={{.Version}}
+      - -X github.com/dwellir-public/cli/internal/cli.Commit={{.ShortCommit}}
+      - -X github.com/dwellir-public/cli/internal/cli.BuildDate={{.Date}}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+brews:
+  - repository:
+      owner: dwellir-public
+      name: homebrew-tap
+    homepage: "https://dwellir.com"
+    description: "Dwellir CLI — Blockchain RPC infrastructure from your terminal"
+    license: "MIT"
+    install: |
+      bin.install "dwellir"
+    test: |
+      system "#{bin}/dwellir", "version"
