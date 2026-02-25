@@ -176,12 +176,6 @@ dwellir config get output
 - `DWELLIR_API_URL` — override API base URL (default: `https://dashboard.dwellir.com/marly-api`)
 - `DWELLIR_DASHBOARD_URL` — override dashboard URL for browser auth
 
-## Telemetry
-
-Telemetry is integrated via PostHog and intended to be fire-and-forget.
-
-- Use `--anon-telemetry` to anonymize identity data for a command invocation.
-
 ## Development
 
 ```bash
