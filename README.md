@@ -65,7 +65,15 @@ dwellir endpoints search ethereum --protocol https
 dwellir endpoints get base
 ```
 
-### 3) Manage keys
+### 3) Search docs from the terminal
+
+```bash
+dwellir docs search authentication
+dwellir docs get getting-started
+dwellir docs get https://www.dwellir.com/docs/hyperliquid/historical-data
+```
+
+### 4) Manage keys
 
 ```bash
 dwellir keys list
@@ -73,7 +81,7 @@ dwellir keys create --name ci-key --daily-quota 100000
 dwellir keys disable <key-id>
 ```
 
-### 4) Check usage and logs
+### 5) Check usage and logs
 
 ```bash
 dwellir usage summary
@@ -86,6 +94,7 @@ dwellir logs errors --status-code 429 --limit 100
 Top-level commands:
 
 - `dwellir auth` — login/logout/status/token
+- `dwellir docs` — list/search/get public docs pages as markdown
 - `dwellir endpoints` — list/search/get chains and networks
 - `dwellir keys` — list/create/update/delete/enable/disable API keys
 - `dwellir usage` — summary/history/rps analytics
@@ -175,6 +184,8 @@ dwellir config get output
 - `DWELLIR_CONFIG_DIR` — custom config directory
 - `DWELLIR_API_URL` — override API base URL (default: `https://dashboard.dwellir.com/marly-api`)
 - `DWELLIR_DASHBOARD_URL` — override dashboard URL for browser auth
+- `DWELLIR_DOCS_BASE_URL` — override docs base URL (default: `https://www.dwellir.com/docs`)
+- `DWELLIR_DOCS_INDEX_URL` — override docs index URL (default: `<docs-base>/llms.txt`)
 
 ## Development
 
