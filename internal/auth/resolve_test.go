@@ -35,7 +35,9 @@ func TestResolveTokenFromProfile(t *testing.T) {
 		Name:  "default",
 		Token: "profile-token",
 	}
-	config.SaveProfile(configDir, p)
+	if err := config.SaveProfile(configDir, p); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	token, err := ResolveToken("", "", t.TempDir(), configDir)
 	if err != nil {
@@ -51,9 +53,13 @@ func TestResolveTokenFromDwellirJSON(t *testing.T) {
 	projectDir := t.TempDir()
 
 	p := &config.Profile{Name: "work", Token: "work-token"}
-	config.SaveProfile(configDir, p)
+	if err := config.SaveProfile(configDir, p); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-	os.WriteFile(filepath.Join(projectDir, ".dwellir.json"), []byte(`{"profile":"work"}`), 0o644)
+	if err := os.WriteFile(filepath.Join(projectDir, ".dwellir.json"), []byte(`{"profile":"work"}`), 0o644); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	token, err := ResolveToken("", "", projectDir, configDir)
 	if err != nil {

@@ -71,7 +71,9 @@ func Login(configDir string, profileName string, dashboardURL string) (*config.P
 			errCh <- err
 		}
 	}()
-	defer server.Shutdown(context.Background())
+	defer func() {
+		_ = server.Shutdown(context.Background())
+	}()
 
 	authURL := fmt.Sprintf("%s/cli-auth?port=%d", dashboardURL, port)
 	fmt.Fprintf(config.Stderr(), "Opening browser for authentication...\n")

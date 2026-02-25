@@ -36,7 +36,9 @@ func TestSetAndGet(t *testing.T) {
 func TestSaveAndReload(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := Load(dir)
-	cfg.Set("output", "json")
+	if err := cfg.Set("output", "json"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	err := cfg.Save()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -77,7 +79,9 @@ func TestResolveProfileFromDwellirJSON(t *testing.T) {
 	projectDir := t.TempDir()
 
 	content := []byte(`{"profile": "work"}`)
-	os.WriteFile(filepath.Join(projectDir, ".dwellir.json"), content, 0o644)
+	if err := os.WriteFile(filepath.Join(projectDir, ".dwellir.json"), content, 0o644); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	name := ResolveProfileName("", "", projectDir, configDir)
 	if name != "work" {

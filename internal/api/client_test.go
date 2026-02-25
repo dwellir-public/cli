@@ -15,7 +15,9 @@ func TestClientGet(t *testing.T) {
 		if r.URL.Path != "/v3/chains" {
 			t.Errorf("expected /v3/chains, got: %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode([]map[string]string{{"name": "Ethereum"}})
+		if err := json.NewEncoder(w).Encode([]map[string]string{{"name": "Ethereum"}}); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -35,7 +37,9 @@ func TestClientPost(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got: %s", r.Method)
 		}
-		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		if err := json.NewEncoder(w).Encode(map[string]bool{"ok": true}); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -53,7 +57,9 @@ func TestClientPost(t *testing.T) {
 func TestClientUnauthorized(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"detail": "Not authenticated"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"detail": "Not authenticated"}); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -75,7 +81,9 @@ func TestClientUnauthorized(t *testing.T) {
 func TestClientTokenRefresh(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Dwellir-Refreshed-Token", "new-token-456")
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -86,7 +94,9 @@ func TestClientTokenRefresh(t *testing.T) {
 	}
 
 	var result map[string]string
-	client.Get("/v4/user", nil, &result)
+	if err := client.Get("/v4/user", nil, &result); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if refreshedToken != "new-token-456" {
 		t.Errorf("expected refreshed token, got: '%s'", refreshedToken)
 	}
