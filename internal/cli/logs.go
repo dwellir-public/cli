@@ -1,8 +1,9 @@
 package cli
 
 import (
-	"github.com/dwellir-public/cli/internal/api"
 	"github.com/spf13/cobra"
+
+	"github.com/dwellir-public/cli/internal/api"
 )
 
 var (
