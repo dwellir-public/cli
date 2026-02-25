@@ -3,15 +3,14 @@ package cli
 import (
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dwellir-public/cli/internal/api"
 	"github.com/dwellir-public/cli/internal/auth"
 	"github.com/dwellir-public/cli/internal/config"
-	"github.com/spf13/cobra"
 )
 
 var (
-	epChain     string
-	epNetwork   string
 	epProtocol  string
 	epNodeType  string
 	epEcosystem string

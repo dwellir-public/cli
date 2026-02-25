@@ -15,7 +15,9 @@ func TestListKeys(t *testing.T) {
 		if r.URL.Path != "/v3/user/apikeys" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(keys)
+		if err := json.NewEncoder(w).Encode(keys); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -39,9 +41,13 @@ func TestCreateKey(t *testing.T) {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
 		var input CreateKeyInput
-		json.NewDecoder(r.Body).Decode(&input)
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			t.Errorf("failed to decode request: %v", err)
+		}
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(APIKey{APIKey: "new-key", Name: input.Name, Enabled: true})
+		if err := json.NewEncoder(w).Encode(APIKey{APIKey: "new-key", Name: input.Name, Enabled: true}); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 

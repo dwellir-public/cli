@@ -5,9 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dwellir-public/cli/internal/auth"
 	"github.com/dwellir-public/cli/internal/config"
-	"github.com/spf13/cobra"
 )
 
 const defaultDashboardURL = "https://dashboard.dwellir.com"

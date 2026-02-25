@@ -3,9 +3,10 @@ package cli
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dwellir-public/cli/internal/config"
 	"github.com/dwellir-public/cli/internal/output"
-	"github.com/spf13/cobra"
 )
 
 var configCmd = &cobra.Command{
