@@ -14,8 +14,9 @@ import (
 const defaultDocsBaseURL = "https://www.dwellir.com/docs"
 
 var (
-	docsLimit int
-	docsAll   bool
+	docsListLimit   int
+	docsSearchLimit int
+	docsAll         bool
 )
 
 var docsCmd = &cobra.Command{
@@ -34,8 +35,8 @@ var docsListCmd = &cobra.Command{
 			return getFormatter().Error("docs_unavailable", "Unable to fetch docs index.", err.Error())
 		}
 
-		if !docsAll && docsLimit > 0 && len(entries) > docsLimit {
-			entries = entries[:docsLimit]
+		if !docsAll && docsListLimit > 0 && len(entries) > docsListLimit {
+			entries = entries[:docsListLimit]
 		}
 		return getFormatter().Success("docs.list", entries)
 	},
@@ -47,7 +48,7 @@ var docsSearchCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		docsClient := newDocsAPI()
-		entries, err := docsClient.Search(args[0], docsLimit)
+		entries, err := docsClient.Search(args[0], docsSearchLimit)
 		if err != nil {
 			return getFormatter().Error("docs_unavailable", "Unable to search docs index.", err.Error())
 		}
@@ -90,9 +91,9 @@ func newDocsAPI() *api.DocsAPI {
 }
 
 func init() {
-	docsListCmd.Flags().IntVar(&docsLimit, "limit", 25, "Maximum number of results to return")
+	docsListCmd.Flags().IntVar(&docsListLimit, "limit", 25, "Maximum number of results to return")
 	docsListCmd.Flags().BoolVar(&docsAll, "all", false, "Return all docs pages")
-	docsSearchCmd.Flags().IntVar(&docsLimit, "limit", 10, "Maximum number of results to return")
+	docsSearchCmd.Flags().IntVar(&docsSearchLimit, "limit", 10, "Maximum number of results to return")
 
 	docsCmd.AddCommand(docsListCmd, docsSearchCmd, docsGetCmd)
 	rootCmd.AddCommand(docsCmd)
