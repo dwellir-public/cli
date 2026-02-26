@@ -79,7 +79,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm -v "$PWD/dist/aur:/work" -w /work archlinux:latest bash -lc '
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$PWD/dist/aur:/work" \
+            -w /work \
+            archlinux:latest bash -lc '
             set -euo pipefail
             makepkg --printsrcinfo > .SRCINFO
             makepkg --verifysource --nobuild
