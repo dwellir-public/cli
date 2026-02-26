@@ -207,3 +207,12 @@ Core paths:
 - `internal/output/` — formatter and envelope
 - `internal/telemetry/` — PostHog integration
 - `test/e2e/` — end-to-end tests
+
+## Releases
+
+- Version source of truth: `VERSION` (SemVer, e.g. `0.1.0`).
+- Every PR merged to `main` must bump `VERSION`.
+- A merge to `main` automatically:
+  1. creates/pushes `v<VERSION>` tag
+  2. runs GoReleaser on that tag
+  3. publishes GitHub release artifacts

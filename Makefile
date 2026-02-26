@@ -1,6 +1,6 @@
 .PHONY: build test test-e2e lint fmt check run clean
 
-VERSION ?= dev
+VERSION ?= $(shell cat VERSION 2>/dev/null || echo "dev")
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -X github.com/dwellir-public/cli/internal/cli.Version=$(VERSION) \
