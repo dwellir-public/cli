@@ -46,6 +46,7 @@ brews:
   - repository:
       owner: dwellir-public
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: "https://dwellir.com"
     description: "Dwellir CLI — Blockchain RPC infrastructure from your terminal"
     license: "MIT"
