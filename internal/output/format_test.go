@@ -143,3 +143,66 @@ func TestHumanLogsFacets(t *testing.T) {
 		t.Fatalf("expected facet section output, got:\n%s", got)
 	}
 }
+
+func TestHumanEndpointsUsesProtocolColumn(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewHumanFormatter(&buf)
+
+	err := f.Success("endpoints.search", []api.Chain{
+		{
+			Name:      "Base",
+			Ecosystem: "evm",
+			Networks: []api.Network{
+				{
+					Name: "Mainnet",
+					Nodes: []api.Node{
+						{
+							NodeType: api.NodeType{Name: "archive"},
+							HTTPS:    "https://api-base-mainnet-archive.n.dwellir.com/<key>",
+							WSS:      "wss://api-base-mainnet-archive.n.dwellir.com/<key>",
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "PROTOCOL") || !strings.Contains(got, "ENDPOINT") {
+		t.Fatalf("expected protocol/endpoint headers, got:\n%s", got)
+	}
+	if strings.Contains(got, "HTTPS") || strings.Contains(got, "WSS") {
+		t.Fatalf("expected no dedicated HTTPS/WSS columns, got:\n%s", got)
+	}
+	if !strings.Contains(got, "https://api-base-mainnet-archive.n.dwellir.com/") {
+		t.Fatalf("expected https endpoint row, got:\n%s", got)
+	}
+	if !strings.Contains(got, "wss://api-base-mainnet-archive.n.dwellir.com/") {
+		t.Fatalf("expected wss endpoint row, got:\n%s", got)
+	}
+}
+
+func TestEndpointColumnWidth(t *testing.T) {
+	tests := []struct {
+		name     string
+		terminal int
+		want     int
+	}{
+		{name: "default when terminal unknown", terminal: 0, want: 48},
+		{name: "minimum width clamp", terminal: 70, want: 18},
+		{name: "dynamic width", terminal: 120, want: 58},
+		{name: "maximum width clamp", terminal: 200, want: 64},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := endpointColumnWidth(tc.terminal)
+			if got != tc.want {
+				t.Fatalf("expected %d, got %d", tc.want, got)
+			}
+		})
+	}
+}
