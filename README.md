@@ -27,7 +27,14 @@ brew update
 brew upgrade dwellir
 ```
 
-### Option 2: Install latest release script
+### Option 2: AUR (Arch Linux)
+
+```bash
+yay -S dwellir-cli-bin
+dwellir version --json
+```
+
+### Option 3: Install latest release script
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dwellir-public/cli/main/scripts/install.sh | sh
@@ -35,7 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/dwellir-public/cli/main/scripts/ins
 
 Note: this requires published GitHub releases.
 
-### Option 3: Build from source
+### Option 4: Build from source
 
 ```bash
 git clone git@github.com:dwellir-public/cli.git
@@ -44,7 +51,7 @@ make build
 ./bin/dwellir --help
 ```
 
-### Option 4: Go install
+### Option 5: Go install
 
 ```bash
 go install github.com/dwellir-public/cli/cmd/dwellir@latest
