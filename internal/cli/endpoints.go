@@ -14,6 +14,7 @@ var (
 	epProtocol  string
 	epNodeType  string
 	epEcosystem string
+	epNetwork   string
 )
 
 var endpointsCmd = &cobra.Command{
@@ -31,7 +32,7 @@ var endpointsListCmd = &cobra.Command{
 			return f.Error("not_authenticated", err.Error(), "")
 		}
 		ep := api.NewEndpointsAPI(client)
-		chains, err := ep.Search("", epEcosystem, epNodeType, epProtocol)
+		chains, err := ep.Search("", epEcosystem, epNodeType, epProtocol, epNetwork)
 		if err != nil {
 			return formatCommandError(err)
 		}
@@ -51,7 +52,7 @@ var endpointsSearchCmd = &cobra.Command{
 			return f.Error("not_authenticated", err.Error(), "")
 		}
 		ep := api.NewEndpointsAPI(client)
-		chains, err := ep.Search(args[0], epEcosystem, epNodeType, epProtocol)
+		chains, err := ep.Search(args[0], epEcosystem, epNodeType, epProtocol, epNetwork)
 		if err != nil {
 			return formatCommandError(err)
 		}
@@ -71,7 +72,7 @@ var endpointsGetCmd = &cobra.Command{
 			return f.Error("not_authenticated", err.Error(), "")
 		}
 		ep := api.NewEndpointsAPI(client)
-		chains, err := ep.Search(args[0], "", "", "")
+		chains, err := ep.Search(args[0], epEcosystem, epNodeType, epProtocol, epNetwork)
 		if err != nil {
 			return formatCommandError(err)
 		}
@@ -88,6 +89,7 @@ func init() {
 		cmd.Flags().StringVar(&epEcosystem, "ecosystem", "", "Filter by ecosystem (evm, substrate, cosmos, solana)")
 		cmd.Flags().StringVar(&epNodeType, "node-type", "", "Filter by node type (full, archive)")
 		cmd.Flags().StringVar(&epProtocol, "protocol", "", "Filter by protocol (https, wss)")
+		cmd.Flags().StringVar(&epNetwork, "network", "", "Filter by network (mainnet, testnet, or network name)")
 	}
 	endpointsCmd.AddCommand(endpointsListCmd, endpointsSearchCmd, endpointsGetCmd)
 	rootCmd.AddCommand(endpointsCmd)
