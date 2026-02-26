@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
@@ -43,7 +45,11 @@ var updateCmd = &cobra.Command{
 			return f.Error("update_failed", fmt.Sprintf("Unable to resolve executable path: %v", err), "")
 		}
 		if err := selfupdate.UpdateTo(cmd.Context(), latest.AssetURL, latest.AssetName, cmdPath); err != nil {
-			return f.Error("update_failed", fmt.Sprintf("Update failed: %v", err), "Try downloading manually from GitHub releases.")
+			help := "Try downloading manually from GitHub releases."
+			if hint := detectManagedInstallHint(cmdPath); hint != "" {
+				help = hint
+			}
+			return f.Error("update_failed", fmt.Sprintf("Update failed: %v", err), help)
 		}
 
 		return f.Success("update", map[string]string{
@@ -90,4 +96,62 @@ func parseSemanticVersion(version string) (*semver.Version, bool, error) {
 		return nil, false, nil
 	}
 	return parsed, true, nil
+}
+
+func detectManagedInstallHint(executablePath string) string {
+	return detectManagedInstallHintWith(executablePath, exec.LookPath, runCommandOutput)
+}
+
+func detectManagedInstallHintWith(
+	executablePath string,
+	lookPath func(file string) (string, error),
+	runCmd func(name string, args ...string) (string, error),
+) string {
+	path := strings.TrimSpace(executablePath)
+	if path == "" {
+		if discovered, err := lookPath("dwellir"); err == nil {
+			path = strings.TrimSpace(discovered)
+		}
+	}
+
+	if _, err := lookPath("pacman"); err == nil && path != "" {
+		if out, runErr := runCmd("pacman", "-Qo", path); runErr == nil {
+			if pkg := parsePacmanOwnedPackage(out); pkg != "" {
+				return fmt.Sprintf(
+					"This installation is managed by pacman/AUR (%s). Run `yay -Syu %s` (or `sudo pacman -Syu %s`).",
+					pkg,
+					pkg,
+					pkg,
+				)
+			}
+			return "This installation is managed by pacman/AUR. Run `yay -Syu dwellir-cli-bin` (or `sudo pacman -Syu dwellir-cli-bin`)."
+		}
+	}
+
+	if _, err := lookPath("brew"); err == nil {
+		if _, runErr := runCmd("brew", "list", "--formula", "dwellir"); runErr == nil {
+			return "This installation is managed by Homebrew. Run `brew upgrade dwellir`."
+		}
+	}
+
+	return ""
+}
+
+func parsePacmanOwnedPackage(output string) string {
+	line := strings.TrimSpace(output)
+	if line == "" {
+		return ""
+	}
+
+	re := regexp.MustCompile(` is owned by ([^ ]+) `)
+	matches := re.FindStringSubmatch(line)
+	if len(matches) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(matches[1])
+}
+
+func runCommandOutput(name string, args ...string) (string, error) {
+	out, err := exec.Command(name, args...).CombinedOutput()
+	return string(out), err
 }
