@@ -12,7 +12,22 @@ It is designed for both humans and agents, with consistent `--json` output on ev
 
 ## Install
 
-### Option 1: Install latest release (recommended)
+### Option 1: Homebrew
+
+```bash
+brew tap dwellir-public/homebrew-tap
+brew install dwellir
+dwellir version --json
+```
+
+Upgrade later:
+
+```bash
+brew update
+brew upgrade dwellir
+```
+
+### Option 2: Install latest release script
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dwellir-public/cli/main/scripts/install.sh | sh
@@ -20,7 +35,7 @@ curl -fsSL https://raw.githubusercontent.com/dwellir-public/cli/main/scripts/ins
 
 Note: this requires published GitHub releases.
 
-### Option 2: Build from source
+### Option 3: Build from source
 
 ```bash
 git clone git@github.com:dwellir-public/cli.git
@@ -29,7 +44,7 @@ make build
 ./bin/dwellir --help
 ```
 
-### Option 3: Go install
+### Option 4: Go install
 
 ```bash
 go install github.com/dwellir-public/cli/cmd/dwellir@latest

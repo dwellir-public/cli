@@ -1,0 +1,118 @@
+name: AUR Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. v0.1.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - name: Resolve version/tag
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            raw_tag="${{ github.event.release.tag_name }}"
+          else
+            raw_tag="${{ github.event.inputs.tag }}"
+          fi
+
+          tag="${raw_tag#refs/tags/}"
+          version="${tag#v}"
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid tag/version '$raw_tag'. Expected vX.Y.Z"
+            exit 1
+          fi
+
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish AUR
+    needs: prepare
+    if: ${{ secrets.AUR_SSH_PRIVATE_KEY != '' }}
+    runs-on: ubuntu-latest
+    env:
+      AUR_PACKAGE_NAME: ${{ vars.AUR_PACKAGE_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Render PKGBUILD from release checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/aur
+          scripts/aur/render-pkgbuild.sh "${{ needs.prepare.outputs.version }}" dist/aur/PKGBUILD
+
+      - name: Generate .SRCINFO and verify sources in Arch container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD/dist/aur:/work" -w /work archlinux:latest bash -lc '
+            set -euo pipefail
+            makepkg --printsrcinfo > .SRCINFO
+            makepkg --verifysource --nobuild
+          '
+
+      - name: Configure SSH for AUR push
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+
+      - name: Push PKGBUILD and .SRCINFO to AUR
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_name="${AUR_PACKAGE_NAME:-dwellir-bin}"
+          repo_url="ssh://aur@aur.archlinux.org/${package_name}.git"
+
+          rm -rf /tmp/aur-repo
+          git clone "$repo_url" /tmp/aur-repo
+
+          cp dist/aur/PKGBUILD /tmp/aur-repo/PKGBUILD
+          cp dist/aur/.SRCINFO /tmp/aur-repo/.SRCINFO
+
+          cd /tmp/aur-repo
+          if git diff --quiet; then
+            echo "No AUR changes to publish."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "dwellir-bin: update to ${{ needs.prepare.outputs.version }}-1"
+          git push origin master
+
+  not-configured:
+    name: AUR Not Configured
+    needs: prepare
+    if: ${{ secrets.AUR_SSH_PRIVATE_KEY == '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain setup requirement
+        run: |
+          echo "AUR publish skipped: missing AUR_SSH_PRIVATE_KEY secret."
+          echo "Set AUR_SSH_PRIVATE_KEY and optionally AUR_PACKAGE_NAME to enable automation."
