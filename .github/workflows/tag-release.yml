@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   tag:
-    name: tag
+    name: tag-and-release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +22,9 @@ jobs:
           fetch-depth: 0
 
       - name: Create version tag from VERSION
+        id: prepare
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -35,17 +38,45 @@ jobs:
           fi
 
           tag="v${version}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
           git fetch --tags --force
           if git rev-parse "$tag" >/dev/null 2>&1; then
-            echo "Tag $tag already exists; skipping."
-            exit 0
+            echo "Tag $tag already exists."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+          else
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+
+            git tag -a "$tag" -m "chore(release): $tag"
+            git push origin "$tag"
+            echo "Created and pushed tag: $tag"
+            echo "created=true" >> "$GITHUB_OUTPUT"
           fi
 
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; skipping publish."
+            echo "release_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
-          git tag -a "$tag" -m "chore(release): $tag"
-          git push origin "$tag"
+      - name: Checkout release tag
+        if: steps.prepare.outputs.release_exists == 'false'
+        shell: bash
+        run: |
+          git fetch --tags --force
+          git checkout "${{ steps.prepare.outputs.tag }}"
 
-          echo "Created and pushed tag: $tag"
+      - uses: actions/setup-go@v5
+        if: steps.prepare.outputs.release_exists == 'false'
+        with:
+          go-version: "1.24"
+
+      - uses: goreleaser/goreleaser-action@v6
+        if: steps.prepare.outputs.release_exists == 'false'
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
