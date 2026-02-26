@@ -3,6 +3,9 @@ name: AUR Release
 on:
   release:
     types: [published]
+  workflow_run:
+    workflows: ["Tag Release"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -16,12 +19,18 @@ permissions:
 jobs:
   prepare:
     name: Prepare
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
       aur_configured: ${{ steps.aur.outputs.configured }}
     steps:
+      - uses: actions/checkout@v4
+        if: ${{ github.event_name == 'workflow_run' }}
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
       - name: Resolve version/tag
         id: resolve
         shell: bash
@@ -30,6 +39,8 @@ jobs:
 
           if [[ "${{ github.event_name }}" == "release" ]]; then
             raw_tag="${{ github.event.release.tag_name }}"
+          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            raw_tag="v$(tr -d '[:space:]' < VERSION)"
           else
             raw_tag="${{ github.event.inputs.tag }}"
           fi
