@@ -476,7 +476,6 @@ func (f *HumanFormatter) renderKeyValueRows(rows [][2]string) error {
 		return err
 	}
 	tw := table.NewWriter()
-	tw.AppendHeader(table.Row{"Field", "Value"})
 	for _, row := range rows {
 		tw.AppendRow(table.Row{row[0], row[1]})
 	}

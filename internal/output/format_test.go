@@ -81,6 +81,30 @@ func TestHumanUsageSummary(t *testing.T) {
 	if !strings.Contains(got, "Total requests") || !strings.Contains(got, "100") {
 		t.Fatalf("expected key/value output, got:\n%s", got)
 	}
+	if strings.Contains(got, "FIELD") || strings.Contains(got, "VALUE") {
+		t.Fatalf("expected key/value output without generic headers, got:\n%s", got)
+	}
+}
+
+func TestHumanWriteMapDoesNotShowGenericHeaders(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewHumanFormatter(&buf)
+
+	err := f.Success("version", map[string]string{
+		"version": "0.1.3",
+		"commit":  "ce3431d",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "Version") || !strings.Contains(got, "0.1.3") {
+		t.Fatalf("expected key/value data, got:\n%s", got)
+	}
+	if strings.Contains(got, "FIELD") || strings.Contains(got, "VALUE") {
+		t.Fatalf("expected key/value output without generic headers, got:\n%s", got)
+	}
 }
 
 func TestHumanDocsGetMarkdown(t *testing.T) {
