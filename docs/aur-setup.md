@@ -1,11 +1,11 @@
 # AUR Automation Setup (Safe)
 
-This guide prepares automatic AUR publishing for `dwellir-bin` from GitHub Actions.
+This guide prepares automatic AUR publishing for `dwellir-cli-bin` from GitHub Actions.
 
 ## What Stays Manual
 
 1. Create/verify your AUR account (email verification step in AUR UI).
-2. Create the `dwellir-bin` package repository on AUR (first-time package submission).
+2. Create the `dwellir-cli-bin` package repository on AUR (first-time package submission).
 3. Add your AUR SSH public key in AUR account settings.
 
 After this one-time setup, releases can be automatic via CI.
@@ -40,10 +40,10 @@ Set repo secret directly from file (recommended):
 gh secret set AUR_SSH_PRIVATE_KEY --repo dwellir-public/cli < ~/.ssh/dwellir_aur_ci
 ```
 
-Optional package name variable (default is `dwellir-bin`):
+Optional package name variable (default is `dwellir-cli-bin`):
 
 ```bash
-gh variable set AUR_PACKAGE_NAME --repo dwellir-public/cli --body "dwellir-bin"
+gh variable set AUR_PACKAGE_NAME --repo dwellir-public/cli --body "dwellir-cli-bin"
 ```
 
 ## 4. Verify SSH Access Without Leaking Secrets
