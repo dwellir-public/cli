@@ -41,8 +41,8 @@ func (e *EndpointsAPI) List() ([]Chain, error) {
 	return chains, err
 }
 
-// Search filters chains by query string (matches chain name, network name).
-func (e *EndpointsAPI) Search(query string, ecosystem string, nodeType string, protocol string) ([]Chain, error) {
+// Search filters chains by query string and optional endpoint filters.
+func (e *EndpointsAPI) Search(query string, ecosystem string, nodeType string, protocol string, network string) ([]Chain, error) {
 	chains, err := e.List()
 	if err != nil {
 		return nil, err
@@ -61,6 +61,9 @@ func (e *EndpointsAPI) Search(query string, ecosystem string, nodeType string, p
 		for _, net := range chain.Networks {
 			netMatch := chainMatch || strings.Contains(strings.ToLower(net.Name), query)
 			if !netMatch {
+				continue
+			}
+			if !matchesNetworkFilter(net.Name, network) {
 				continue
 			}
 
@@ -91,4 +94,21 @@ func (e *EndpointsAPI) Search(query string, ecosystem string, nodeType string, p
 	}
 
 	return filtered, nil
+}
+
+func matchesNetworkFilter(networkName, filter string) bool {
+	filter = strings.ToLower(strings.TrimSpace(filter))
+	if filter == "" {
+		return true
+	}
+
+	name := strings.ToLower(strings.TrimSpace(networkName))
+	switch filter {
+	case "mainnet":
+		return strings.Contains(name, "mainnet")
+	case "testnet":
+		return !strings.Contains(name, "mainnet")
+	default:
+		return strings.Contains(name, filter)
+	}
 }
