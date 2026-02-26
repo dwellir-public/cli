@@ -42,11 +42,25 @@ func runCLI(t *testing.T, args ...string) cliResult {
 
 func runCLIWithConfigDir(t *testing.T, configDir string, args ...string) cliResult {
 	t.Helper()
+	return runCLIWithConfigDirAndEnv(t, configDir, nil, args...)
+}
+
+func runCLIWithEnv(t *testing.T, env map[string]string, args ...string) cliResult {
+	t.Helper()
+	return runCLIWithConfigDirAndEnv(t, t.TempDir(), env, args...)
+}
+
+func runCLIWithConfigDirAndEnv(t *testing.T, configDir string, extraEnv map[string]string, args ...string) cliResult {
+	t.Helper()
 	cmd := exec.Command(binaryPath, args...)
-	cmd.Env = append(os.Environ(),
+	env := append(os.Environ(),
 		"DWELLIR_CONFIG_DIR="+configDir,
 		"HOME="+t.TempDir(),
 	)
+	for key, val := range extraEnv {
+		env = append(env, key+"="+val)
+	}
+	cmd.Env = env
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

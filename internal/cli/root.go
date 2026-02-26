@@ -20,6 +20,7 @@ and debug error logs — all from the command line.
 
 Get started:
   dwellir auth login       Authenticate with your Dwellir account
+  dwellir docs search rpc  Search Dwellir documentation
   dwellir endpoints list   Browse available blockchain endpoints
   dwellir keys list        List your API keys
 

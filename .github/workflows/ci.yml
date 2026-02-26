@@ -1,25 +1,80 @@
 name: CI
-on: [push, pull_request]
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 jobs:
+  version-bump:
+    name: version-bump
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify VERSION bump
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          raw=$(tr -d '[:space:]' < VERSION)
+          new_version=${raw#v}
+
+          if [[ ! "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::VERSION must be SemVer (e.g. 0.1.0 or v0.1.0)."
+            exit 1
+          fi
+
+          base_raw=$(git show "origin/${{ github.base_ref }}:VERSION" 2>/dev/null || true)
+          if [[ -z "$base_raw" ]]; then
+            echo "No VERSION found on base branch; treating as initial release."
+            exit 0
+          fi
+
+          base_version=${base_raw#v}
+          base_version=$(echo "$base_version" | tr -d '[:space:]')
+
+          if [[ "$new_version" == "$base_version" ]]; then
+            echo "::error::VERSION was not bumped (still $new_version)."
+            exit 1
+          fi
+
+          if [[ "$(printf '%s\n' "$base_version" "$new_version" | sort -V | tail -n1)" != "$new_version" ]]; then
+            echo "::error::VERSION must be greater than base ($base_version -> $new_version)."
+            exit 1
+          fi
+
+          echo "VERSION bump OK: $base_version -> $new_version"
+
   check:
+    name: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: '1.24'
       - run: go test ./...
       - uses: golangci/golangci-lint-action@v6
         with:
           version: latest
 
   build:
+    name: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: '1.24'
       - run: make build
       - run: ./bin/dwellir version
