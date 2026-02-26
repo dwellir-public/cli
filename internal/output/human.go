@@ -5,11 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"text/tabwriter"
+	"sort"
+	"strings"
+
+	"github.com/charmbracelet/glamour"
+	"github.com/jedib0t/go-pretty/v6/table"
+
+	"github.com/dwellir-public/cli/internal/api"
 )
 
 type HumanFormatter struct {
-	w io.Writer
+	w          io.Writer
+	mdRenderer *glamour.TermRenderer
 }
 
 func NewHumanFormatter(w io.Writer) *HumanFormatter {
@@ -17,7 +24,40 @@ func NewHumanFormatter(w io.Writer) *HumanFormatter {
 }
 
 func (f *HumanFormatter) Success(command string, data interface{}) error {
-	return f.Write(data)
+	switch command {
+	case "keys.list":
+		return f.writeKeysList(data)
+	case "keys.create", "keys.update", "keys.enable", "keys.disable":
+		return f.writeSingleKey(data)
+	case "keys.delete":
+		return f.Write(data)
+	case "usage.summary":
+		return f.writeUsageSummary(data)
+	case "usage.history":
+		return f.writeUsageHistory(data)
+	case "usage.rps":
+		return f.writeUsageRPS(data)
+	case "logs.errors":
+		return f.writeLogsErrors(data)
+	case "logs.stats":
+		return f.writeLogsStats(data)
+	case "logs.facets":
+		return f.writeLogsFacets(data)
+	case "endpoints.list", "endpoints.search", "endpoints.get":
+		return f.writeEndpoints(data)
+	case "account.info":
+		return f.writeAccountInfo(data)
+	case "account.subscription":
+		return f.writeSubscription(data)
+	case "docs.list", "docs.search":
+		return f.writeDocsEntries(data)
+	case "docs.get":
+		return f.writeDocsPage(data)
+	case "auth.login", "auth.logout", "auth.status", "config.set", "config.get", "config.list", "version", "update":
+		return f.Write(data)
+	default:
+		return f.Write(data)
+	}
 }
 
 func (f *HumanFormatter) Error(code string, message string, help string) error {
@@ -34,8 +74,17 @@ func (f *HumanFormatter) Error(code string, message string, help string) error {
 
 func (f *HumanFormatter) Write(data interface{}) error {
 	switch v := data.(type) {
-	case []map[string]interface{}:
-		return f.writeTable(v)
+	case map[string]string:
+		rows := make([][2]string, 0, len(v))
+		keys := make([]string, 0, len(v))
+		for key := range v {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			rows = append(rows, [2]string{humanizeKey(key), v[key]})
+		}
+		return f.renderKeyValueRows(rows)
 	case map[string]interface{}:
 		return f.writeKeyValue(v)
 	default:
@@ -45,33 +94,416 @@ func (f *HumanFormatter) Write(data interface{}) error {
 	}
 }
 
-func (f *HumanFormatter) writeTable(rows []map[string]interface{}) error {
-	if len(rows) == 0 {
-		fmt.Fprintln(f.w, "No results.")
-		return nil
+func (f *HumanFormatter) writeKeysList(data interface{}) error {
+	keys, ok := data.([]api.APIKey)
+	if !ok {
+		return f.Write(data)
 	}
-	tw := tabwriter.NewWriter(f.w, 0, 0, 2, ' ', 0)
-	var headers []string
-	for k := range rows[0] {
-		headers = append(headers, k)
+	if len(keys) == 0 {
+		_, err := fmt.Fprintln(f.w, "No API keys found.")
+		return err
 	}
-	for _, h := range headers {
-		fmt.Fprintf(tw, "%s\t", h)
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"API Key", "Name", "Enabled", "Daily Quota", "Monthly Quota", "Created At", "Updated At"})
+	for _, key := range keys {
+		tw.AppendRow(table.Row{
+			key.APIKey,
+			key.Name,
+			yesNo(key.Enabled),
+			formatQuota(key.DailyQuota),
+			formatQuota(key.MonthlyQuota),
+			key.CreatedAt,
+			key.UpdatedAt,
+		})
 	}
-	fmt.Fprintln(tw)
-	for _, row := range rows {
-		for _, h := range headers {
-			fmt.Fprintf(tw, "%v\t", row[h])
+	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeSingleKey(data interface{}) error {
+	key, ok := data.(*api.APIKey)
+	if !ok {
+		if direct, directOK := data.(api.APIKey); directOK {
+			key = &direct
+			ok = true
 		}
-		fmt.Fprintln(tw)
 	}
-	return tw.Flush()
+	if !ok || key == nil {
+		return f.Write(data)
+	}
+	return f.renderKeyValueRows([][2]string{
+		{"API key", key.APIKey},
+		{"Name", key.Name},
+		{"Enabled", yesNo(key.Enabled)},
+		{"Daily quota", formatQuota(key.DailyQuota)},
+		{"Monthly quota", formatQuota(key.MonthlyQuota)},
+		{"Created at", key.CreatedAt},
+		{"Updated at", key.UpdatedAt},
+	})
 }
 
 func (f *HumanFormatter) writeKeyValue(data map[string]interface{}) error {
-	tw := tabwriter.NewWriter(f.w, 0, 0, 2, ' ', 0)
-	for k, v := range data {
-		fmt.Fprintf(tw, "%s:\t%v\n", k, v)
+	rows := make([][2]string, 0, len(data))
+	keys := make([]string, 0, len(data))
+	for key := range data {
+		keys = append(keys, key)
 	}
-	return tw.Flush()
+	sort.Strings(keys)
+	for _, key := range keys {
+		rows = append(rows, [2]string{humanizeKey(key), fmt.Sprint(data[key])})
+	}
+	return f.renderKeyValueRows(rows)
+}
+
+func (f *HumanFormatter) writeUsageSummary(data interface{}) error {
+	summary, ok := data.(*api.UsageSummary)
+	if !ok {
+		if direct, directOK := data.(api.UsageSummary); directOK {
+			summary = &direct
+			ok = true
+		}
+	}
+	if !ok || summary == nil {
+		return f.Write(data)
+	}
+	rows := [][2]string{
+		{"Total requests", fmt.Sprintf("%d", summary.TotalRequests)},
+		{"Total responses", fmt.Sprintf("%d", summary.TotalResponses)},
+		{"Rate limited", fmt.Sprintf("%d", summary.RateLimited)},
+	}
+	if summary.BillingStart != "" {
+		rows = append(rows, [2]string{"Billing start", summary.BillingStart})
+	}
+	if summary.BillingEnd != "" {
+		rows = append(rows, [2]string{"Billing end", summary.BillingEnd})
+	}
+	return f.renderKeyValueRows(rows)
+}
+
+func (f *HumanFormatter) writeUsageHistory(data interface{}) error {
+	history, ok := data.([]api.UsageHistory)
+	if !ok {
+		return f.Write(data)
+	}
+	if len(history) == 0 {
+		_, err := fmt.Fprintln(f.w, "No usage history found.")
+		return err
+	}
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Timestamp", "Requests", "Responses"})
+	for _, h := range history {
+		tw.AppendRow(table.Row{h.Timestamp, h.Requests, h.Responses})
+	}
+	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeUsageRPS(data interface{}) error {
+	points, ok := data.([]api.RPSData)
+	if !ok {
+		return f.Write(data)
+	}
+	if len(points) == 0 {
+		_, err := fmt.Fprintln(f.w, "No RPS data found.")
+		return err
+	}
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Timestamp", "RPS"})
+	for _, point := range points {
+		tw.AppendRow(table.Row{point.Timestamp, fmt.Sprintf("%.2f", point.RPS)})
+	}
+	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeLogsErrors(data interface{}) error {
+	logs, ok := data.([]api.ErrorLog)
+	if !ok {
+		return f.Write(data)
+	}
+	if len(logs) == 0 {
+		_, err := fmt.Fprintln(f.w, "No error logs found.")
+		return err
+	}
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Timestamp", "Status", "RPC Methods", "Endpoint", "Message"})
+	for _, row := range logs {
+		tw.AppendRow(table.Row{
+			row.Timestamp,
+			fmt.Sprintf("%d %s", row.StatusCode, row.StatusLabel),
+			row.RPCMethods,
+			row.FQDN,
+			row.ErrorMessage,
+		})
+	}
+	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeLogsStats(data interface{}) error {
+	stats, ok := data.([]api.ErrorStats)
+	if !ok {
+		return f.Write(data)
+	}
+	if len(stats) == 0 {
+		_, err := fmt.Fprintln(f.w, "No log statistics found.")
+		return err
+	}
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Status Code", "Count"})
+	for _, row := range stats {
+		tw.AppendRow(table.Row{row.StatusCode, row.Count})
+	}
+	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeLogsFacets(data interface{}) error {
+	facets, ok := data.(*api.ErrorFacets)
+	if !ok {
+		if direct, directOK := data.(api.ErrorFacets); directOK {
+			facets = &direct
+			ok = true
+		}
+	}
+	if !ok || facets == nil {
+		return f.Write(data)
+	}
+
+	sections := []struct {
+		title   string
+		entries []api.FacetEntry
+	}{
+		{title: "FQDNs", entries: facets.FQDNs},
+		{title: "RPC Methods", entries: facets.RPCMethods},
+		{title: "Origins", entries: facets.Origins},
+		{title: "API Keys", entries: facets.APIKeys},
+	}
+
+	hasContent := false
+	for _, section := range sections {
+		if len(section.entries) == 0 {
+			continue
+		}
+		hasContent = true
+		if _, err := fmt.Fprintf(f.w, "%s\n", section.title); err != nil {
+			return err
+		}
+		tw := table.NewWriter()
+		tw.AppendHeader(table.Row{"Value", "Count"})
+		for _, row := range section.entries {
+			tw.AppendRow(table.Row{row.Value, row.Count})
+		}
+		if err := f.renderTable(tw); err != nil {
+			return err
+		}
+	}
+
+	if !hasContent {
+		_, err := fmt.Fprintln(f.w, "No facet data found.")
+		return err
+	}
+	return nil
+}
+
+func (f *HumanFormatter) writeEndpoints(data interface{}) error {
+	chains, ok := data.([]api.Chain)
+	if !ok {
+		return f.Write(data)
+	}
+
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Chain", "Ecosystem", "Network", "Node Type", "HTTPS", "WSS"})
+	count := 0
+
+	for _, chain := range chains {
+		for _, network := range chain.Networks {
+			for _, node := range network.Nodes {
+				tw.AppendRow(table.Row{
+					chain.Name,
+					chain.Ecosystem,
+					network.Name,
+					node.NodeType.Name,
+					node.HTTPS,
+					node.WSS,
+				})
+				count++
+			}
+		}
+	}
+
+	if count == 0 {
+		_, err := fmt.Fprintln(f.w, "No endpoints found.")
+		return err
+	}
+	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeAccountInfo(data interface{}) error {
+	info, ok := data.(*api.AccountInfo)
+	if !ok {
+		if direct, directOK := data.(api.AccountInfo); directOK {
+			info = &direct
+			ok = true
+		}
+	}
+	if !ok || info == nil {
+		return f.Write(data)
+	}
+
+	rows := [][2]string{}
+	if info.Name != "" {
+		rows = append(rows, [2]string{"Name", info.Name})
+	}
+	if info.ServerLocation != "" {
+		rows = append(rows, [2]string{"Server location", info.ServerLocation})
+	}
+	if info.TaxID != "" {
+		rows = append(rows, [2]string{"Tax ID", info.TaxID})
+	}
+	if info.Subscription != nil {
+		rows = append(rows,
+			[2]string{"Subscription plan", info.Subscription.PlanName},
+			[2]string{"Rate limit", fmt.Sprintf("%d", info.Subscription.RateLimit)},
+			[2]string{"Burst limit", fmt.Sprintf("%d", info.Subscription.BurstLimit)},
+			[2]string{"API keys limit", fmt.Sprintf("%d", info.Subscription.APIKeysLimit)},
+			[2]string{"Daily quota", formatQuota(info.Subscription.DailyQuota)},
+			[2]string{"Monthly quota", formatQuota(info.Subscription.MonthlyQuota)},
+		)
+	}
+	if len(rows) == 0 {
+		_, err := fmt.Fprintln(f.w, "No account information available.")
+		return err
+	}
+	return f.renderKeyValueRows(rows)
+}
+
+func (f *HumanFormatter) writeSubscription(data interface{}) error {
+	sub, ok := data.(*api.SubscriptionInfo)
+	if !ok {
+		if direct, directOK := data.(api.SubscriptionInfo); directOK {
+			sub = &direct
+			ok = true
+		}
+	}
+	if !ok || sub == nil {
+		return f.Write(data)
+	}
+	return f.renderKeyValueRows([][2]string{
+		{"Plan", sub.PlanName},
+		{"Rate limit", fmt.Sprintf("%d", sub.RateLimit)},
+		{"Burst limit", fmt.Sprintf("%d", sub.BurstLimit)},
+		{"API keys limit", fmt.Sprintf("%d", sub.APIKeysLimit)},
+		{"Daily quota", formatQuota(sub.DailyQuota)},
+		{"Monthly quota", formatQuota(sub.MonthlyQuota)},
+	})
+}
+
+func (f *HumanFormatter) writeDocsEntries(data interface{}) error {
+	entries, ok := data.([]api.DocsEntry)
+	if !ok {
+		return f.Write(data)
+	}
+	if len(entries) == 0 {
+		_, err := fmt.Fprintln(f.w, "No docs pages found.")
+		return err
+	}
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Title", "Slug", "Section", "Description"})
+	for _, entry := range entries {
+		tw.AppendRow(table.Row{entry.Title, entry.Slug, entry.Section, entry.Description})
+	}
+	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeDocsPage(data interface{}) error {
+	page, ok := data.(api.DocsPage)
+	if !ok {
+		if ptr, ptrOK := data.(*api.DocsPage); ptrOK && ptr != nil {
+			page = *ptr
+			ok = true
+		}
+	}
+	if !ok {
+		return f.Write(data)
+	}
+
+	if err := f.renderKeyValueRows([][2]string{
+		{"Title", page.Title},
+		{"Slug", page.Slug},
+		{"URL", page.URL},
+	}); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(f.w); err != nil {
+		return err
+	}
+
+	rendered, err := f.renderMarkdown(page.Content)
+	if err != nil {
+		_, writeErr := fmt.Fprintln(f.w, page.Content)
+		return writeErr
+	}
+	if !strings.HasSuffix(rendered, "\n") {
+		rendered += "\n"
+	}
+	_, writeErr := io.WriteString(f.w, rendered)
+	return writeErr
+}
+
+func (f *HumanFormatter) renderMarkdown(content string) (string, error) {
+	if f.mdRenderer == nil {
+		renderer, err := glamour.NewTermRenderer(
+			glamour.WithStandardStyle("notty"),
+			glamour.WithWordWrap(0),
+		)
+		if err != nil {
+			return "", err
+		}
+		f.mdRenderer = renderer
+	}
+	return f.mdRenderer.Render(content)
+}
+
+func (f *HumanFormatter) renderTable(tw table.Writer) error {
+	tw.SetStyle(table.StyleLight)
+	out := tw.Render()
+	if !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	_, err := io.WriteString(f.w, out)
+	return err
+}
+
+func (f *HumanFormatter) renderKeyValueRows(rows [][2]string) error {
+	if len(rows) == 0 {
+		_, err := fmt.Fprintln(f.w, "No data.")
+		return err
+	}
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Field", "Value"})
+	for _, row := range rows {
+		tw.AppendRow(table.Row{row[0], row[1]})
+	}
+	return f.renderTable(tw)
+}
+
+func formatQuota(v *int) string {
+	if v == nil {
+		return "Unlimited"
+	}
+	return fmt.Sprintf("%d", *v)
+}
+
+func yesNo(v bool) string {
+	if v {
+		return "yes"
+	}
+	return "no"
+}
+
+func humanizeKey(raw string) string {
+	parts := strings.Split(strings.ReplaceAll(raw, "_", " "), " ")
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(part[:1]) + part[1:]
+	}
+	return strings.Join(parts, " ")
 }

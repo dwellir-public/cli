@@ -21,7 +21,7 @@ var accountInfoCmd = &cobra.Command{
 		}
 		info, err := api.NewAccountAPI(client).Info()
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("account.info", info)
 	},
@@ -37,7 +37,7 @@ var accountSubscriptionCmd = &cobra.Command{
 		}
 		sub, err := api.NewAccountAPI(client).Subscription()
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("account.subscription", sub)
 	},

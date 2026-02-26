@@ -2,7 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/creativeprojects/go-selfupdate"
 	"github.com/spf13/cobra"
 )
@@ -23,7 +26,11 @@ var updateCmd = &cobra.Command{
 			return f.Error("update_failed", "No release found.", "")
 		}
 
-		if latest.LessOrEqual(Version) {
+		upToDate, err := isLatestVersion(Version, latest.Version())
+		if err != nil {
+			return f.Error("update_failed", fmt.Sprintf("Failed to compare versions: %v", err), "")
+		}
+		if upToDate {
 			return f.Success("update", map[string]string{
 				"status":  "up_to_date",
 				"version": Version,
@@ -31,7 +38,11 @@ var updateCmd = &cobra.Command{
 		}
 
 		fmt.Fprintf(cmd.ErrOrStderr(), "Updating to v%s...\n", latest.Version())
-		if err := selfupdate.UpdateTo(cmd.Context(), latest.AssetURL, latest.AssetName, ""); err != nil {
+		cmdPath, err := os.Executable()
+		if err != nil {
+			return f.Error("update_failed", fmt.Sprintf("Unable to resolve executable path: %v", err), "")
+		}
+		if err := selfupdate.UpdateTo(cmd.Context(), latest.AssetURL, latest.AssetName, cmdPath); err != nil {
 			return f.Error("update_failed", fmt.Sprintf("Update failed: %v", err), "Try downloading manually from GitHub releases.")
 		}
 
@@ -45,4 +56,38 @@ var updateCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(updateCmd)
+}
+
+func isLatestVersion(currentVersion string, latestVersion string) (bool, error) {
+	current, ok, err := parseSemanticVersion(currentVersion)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+
+	latest, ok, err := parseSemanticVersion(latestVersion)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, fmt.Errorf("invalid latest version: %q", latestVersion)
+	}
+
+	return !latest.GreaterThan(current), nil
+}
+
+func parseSemanticVersion(version string) (*semver.Version, bool, error) {
+	cleaned := strings.TrimSpace(version)
+	cleaned = strings.TrimPrefix(cleaned, "v")
+	if cleaned == "" || cleaned == "dev" || cleaned == "unknown" {
+		return nil, false, nil
+	}
+
+	parsed, err := semver.NewVersion(cleaned)
+	if err != nil {
+		return nil, false, nil
+	}
+	return parsed, true, nil
 }

@@ -1,5 +1,7 @@
 package api
 
+import "time"
+
 type UsageSummary struct {
 	TotalRequests  int    `json:"total_requests"`
 	TotalResponses int    `json:"total_responses"`
@@ -23,6 +25,14 @@ type UsageAPI struct {
 	client *Client
 }
 
+type analyticsRequest struct {
+	Interval  string `json:"interval,omitempty"`
+	StartTime string `json:"start_time,omitempty"`
+	EndTime   string `json:"end_time,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
+	Offset    int    `json:"offset,omitempty"`
+}
+
 func NewUsageAPI(client *Client) *UsageAPI {
 	return &UsageAPI{client: client}
 }
@@ -34,12 +44,16 @@ func (u *UsageAPI) Summary() (*UsageSummary, error) {
 }
 
 func (u *UsageAPI) History(interval string, from string, to string) ([]UsageHistory, error) {
-	body := map[string]string{"interval": interval}
+	body := analyticsRequest{
+		Interval: interval,
+		Limit:    1000,
+		Offset:   0,
+	}
 	if from != "" {
-		body["from"] = from
+		body.StartTime = from
 	}
 	if to != "" {
-		body["to"] = to
+		body.EndTime = to
 	}
 	var history []UsageHistory
 	err := u.client.Post("/v4/organization/analytics", body, &history)
@@ -47,7 +61,23 @@ func (u *UsageAPI) History(interval string, from string, to string) ([]UsageHist
 }
 
 func (u *UsageAPI) RPS() ([]RPSData, error) {
-	var rps []RPSData
-	err := u.client.Post("/v4/organization/analytics/rps", nil, &rps)
+	body := analyticsRequest{
+		Interval: "hour",
+		Limit:    1000,
+		Offset:   0,
+	}
+	var payload struct {
+		RPS float64 `json:"rps"`
+	}
+	err := u.client.Post("/v4/organization/analytics/rps", body, &payload)
+	if err != nil {
+		return nil, err
+	}
+	rps := []RPSData{
+		{
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			RPS:       payload.RPS,
+		},
+	}
 	return rps, err
 }

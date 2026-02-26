@@ -27,7 +27,7 @@ var keysListCmd = &cobra.Command{
 		}
 		keys, err := api.NewKeysAPI(client).List()
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("keys.list", keys)
 	},
@@ -50,7 +50,7 @@ var keysCreateCmd = &cobra.Command{
 		}
 		key, err := api.NewKeysAPI(client).Create(input)
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("keys.create", key)
 	},
@@ -77,7 +77,7 @@ var keysUpdateCmd = &cobra.Command{
 		}
 		key, err := api.NewKeysAPI(client).Update(args[0], input)
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("keys.update", key)
 	},
@@ -94,7 +94,7 @@ var keysDeleteCmd = &cobra.Command{
 		}
 		err = api.NewKeysAPI(client).Delete(args[0])
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("keys.delete", map[string]string{"key": args[0], "status": "deleted"})
 	},
@@ -111,7 +111,7 @@ var keysEnableCmd = &cobra.Command{
 		}
 		key, err := api.NewKeysAPI(client).Enable(args[0])
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("keys.enable", key)
 	},
@@ -128,7 +128,7 @@ var keysDisableCmd = &cobra.Command{
 		}
 		key, err := api.NewKeysAPI(client).Disable(args[0])
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("keys.disable", key)
 	},

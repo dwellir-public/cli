@@ -33,7 +33,7 @@ var endpointsListCmd = &cobra.Command{
 		ep := api.NewEndpointsAPI(client)
 		chains, err := ep.Search("", epEcosystem, epNodeType, epProtocol)
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		f := getFormatter()
 		return f.Success("endpoints.list", chains)
@@ -53,7 +53,7 @@ var endpointsSearchCmd = &cobra.Command{
 		ep := api.NewEndpointsAPI(client)
 		chains, err := ep.Search(args[0], epEcosystem, epNodeType, epProtocol)
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		f := getFormatter()
 		return f.Success("endpoints.search", chains)
@@ -73,7 +73,7 @@ var endpointsGetCmd = &cobra.Command{
 		ep := api.NewEndpointsAPI(client)
 		chains, err := ep.Search(args[0], "", "", "")
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		f := getFormatter()
 		if len(chains) == 0 {

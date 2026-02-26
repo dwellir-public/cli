@@ -38,7 +38,7 @@ var authLoginCmd = &cobra.Command{
 				Token: tokenFlag,
 			}
 			if err := config.SaveProfile(configDir, p); err != nil {
-				return err
+				return formatCommandError(err)
 			}
 			return f.Success("auth.login", map[string]string{
 				"status":  "authenticated",

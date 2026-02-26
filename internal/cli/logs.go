@@ -33,7 +33,7 @@ var logsErrorsCmd = &cobra.Command{
 		filters := buildLogFilters()
 		logs, err := api.NewLogsAPI(client).Errors(filters)
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("logs.errors", logs)
 	},
@@ -50,7 +50,7 @@ var logsStatsCmd = &cobra.Command{
 		filters := buildLogFilters()
 		stats, err := api.NewLogsAPI(client).Stats(filters)
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("logs.stats", stats)
 	},
@@ -67,7 +67,7 @@ var logsFacetsCmd = &cobra.Command{
 		filters := buildLogFilters()
 		facets, err := api.NewLogsAPI(client).Facets(filters)
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("logs.facets", facets)
 	},

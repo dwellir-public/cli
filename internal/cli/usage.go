@@ -27,7 +27,7 @@ var usageSummaryCmd = &cobra.Command{
 		}
 		summary, err := api.NewUsageAPI(client).Summary()
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("usage.summary", summary)
 	},
@@ -43,7 +43,7 @@ var usageHistoryCmd = &cobra.Command{
 		}
 		history, err := api.NewUsageAPI(client).History(usageInterval, usageFrom, usageTo)
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("usage.history", history)
 	},
@@ -59,7 +59,7 @@ var usageRPSCmd = &cobra.Command{
 		}
 		rps, err := api.NewUsageAPI(client).RPS()
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		return getFormatter().Success("usage.rps", rps)
 	},
