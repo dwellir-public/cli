@@ -99,7 +99,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          package_name="${AUR_PACKAGE_NAME:-dwellir-bin}"
+          package_name="${AUR_PACKAGE_NAME:-dwellir-cli-bin}"
           repo_url="ssh://aur@aur.archlinux.org/${package_name}.git"
 
           rm -rf /tmp/aur-repo
@@ -117,7 +117,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add PKGBUILD .SRCINFO
-          git commit -m "dwellir-bin: update to ${{ needs.prepare.outputs.version }}-1"
+          git commit -m "${package_name}: update to ${{ needs.prepare.outputs.version }}-1"
           git push origin master
 
   not-configured:
