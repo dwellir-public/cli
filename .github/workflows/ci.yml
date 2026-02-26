@@ -26,6 +26,22 @@ jobs:
         run: |
           set -euo pipefail
 
+          changed_files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          requires_bump=false
+          while IFS= read -r file; do
+            case "$file" in
+              cmd/*|internal/*|test/*|go.mod|go.sum)
+                requires_bump=true
+                break
+                ;;
+            esac
+          done <<< "$changed_files"
+
+          if [[ "$requires_bump" != "true" ]]; then
+            echo "No release-relevant CLI files changed; VERSION bump not required."
+            exit 0
+          fi
+
           raw=$(tr -d '[:space:]' < VERSION)
           new_version=${raw#v}
 
