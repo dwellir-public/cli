@@ -22,10 +22,10 @@ var configSetCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load(config.DefaultConfigDir())
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		if err := cfg.Set(args[0], args[1]); err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		f := getFormatter()
 		return f.Success("config.set", map[string]string{args[0]: args[1]})
@@ -39,7 +39,7 @@ var configGetCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load(config.DefaultConfigDir())
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		val := cfg.Get(args[0])
 		if val == "" {
@@ -56,7 +56,7 @@ var configListCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load(config.DefaultConfigDir())
 		if err != nil {
-			return err
+			return formatCommandError(err)
 		}
 		f := getFormatter()
 		return f.Success("config.list", cfg.All())
