@@ -6,8 +6,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dwellir-public/cli/internal/config"
@@ -75,7 +79,7 @@ func Login(configDir string, profileName string, dashboardURL string) (*config.P
 		_ = server.Shutdown(context.Background())
 	}()
 
-	authURL := fmt.Sprintf("%s/cli-auth?port=%d", dashboardURL, port)
+	authURL := buildCLIAuthURL(dashboardURL, port, machineHostname())
 	fmt.Fprintf(config.Stderr(), "Opening browser for authentication...\n")
 	fmt.Fprintf(config.Stderr(), "If the browser doesn't open, visit:\n  %s\n\n", authURL)
 	openBrowser(authURL)
@@ -112,4 +116,32 @@ func openBrowser(url string) {
 		cmd = exec.Command("xdg-open", url)
 	}
 	_ = cmd.Start()
+}
+
+func machineHostname() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(hostname)
+}
+
+func buildCLIAuthURL(dashboardURL string, port int, device string) string {
+	baseURL := strings.TrimRight(dashboardURL, "/")
+	u, err := url.Parse(baseURL + "/cli-auth")
+	if err != nil {
+		fallback := fmt.Sprintf("%s/cli-auth?port=%d", baseURL, port)
+		if device == "" {
+			return fallback
+		}
+		return fallback + "&device=" + url.QueryEscape(device)
+	}
+
+	q := u.Query()
+	q.Set("port", strconv.Itoa(port))
+	if device != "" {
+		q.Set("device", device)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
 }
