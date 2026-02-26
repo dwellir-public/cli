@@ -73,10 +73,28 @@ jobs:
         with:
           go-version: "1.24"
 
+      - name: Compute goreleaser args
+        if: steps.prepare.outputs.release_exists == 'false'
+        id: goreleaser_args
+        shell: bash
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          args="release --clean"
+
+          if [[ -z "${HOMEBREW_TAP_GITHUB_TOKEN:-}" ]]; then
+            args="$args --skip=homebrew"
+            echo "HOMEBREW_TAP_GITHUB_TOKEN is not set; skipping Homebrew publish."
+          fi
+
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+
       - uses: goreleaser/goreleaser-action@v6
         if: steps.prepare.outputs.release_exists == 'false'
         with:
           version: "~> v2"
-          args: release --clean
+          args: ${{ steps.goreleaser_args.outputs.args }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

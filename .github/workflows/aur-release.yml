@@ -20,6 +20,7 @@ jobs:
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
+      aur_configured: ${{ steps.aur.outputs.configured }}
     steps:
       - name: Resolve version/tag
         id: resolve
@@ -44,10 +45,23 @@ jobs:
           echo "tag=v${version}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
+      - name: Detect AUR configuration
+        id: aur
+        shell: bash
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${AUR_SSH_PRIVATE_KEY:-}" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
   publish:
     name: Publish AUR
     needs: prepare
-    if: ${{ secrets.AUR_SSH_PRIVATE_KEY != '' }}
+    if: ${{ needs.prepare.outputs.aur_configured == 'true' }}
     runs-on: ubuntu-latest
     env:
       AUR_PACKAGE_NAME: ${{ vars.AUR_PACKAGE_NAME }}
@@ -109,7 +123,7 @@ jobs:
   not-configured:
     name: AUR Not Configured
     needs: prepare
-    if: ${{ secrets.AUR_SSH_PRIVATE_KEY == '' }}
+    if: ${{ needs.prepare.outputs.aur_configured != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Explain setup requirement
