@@ -20,6 +20,18 @@ var (
 var endpointsCmd = &cobra.Command{
 	Use:   "endpoints",
 	Short: "Browse and search blockchain endpoints",
+	Long: `Browse and search blockchain endpoints.
+
+Use filter flags with any subcommand:
+  --ecosystem  Filter by ecosystem (evm, substrate, cosmos, move)
+  --node-type  Filter by node type (full, archive)
+  --protocol   Filter by protocol (https, wss)
+  --network    Filter by network (mainnet, testnet, or network name)
+
+Examples:
+  dwellir endpoints list --ecosystem evm --network mainnet
+  dwellir endpoints search base --node-type archive --protocol https
+  dwellir endpoints get ethereum --network sepolia`,
 }
 
 var endpointsListCmd = &cobra.Command{
@@ -85,12 +97,10 @@ var endpointsGetCmd = &cobra.Command{
 }
 
 func init() {
-	for _, cmd := range []*cobra.Command{endpointsListCmd, endpointsSearchCmd, endpointsGetCmd} {
-		cmd.Flags().StringVar(&epEcosystem, "ecosystem", "", "Filter by ecosystem (evm, substrate, cosmos, solana)")
-		cmd.Flags().StringVar(&epNodeType, "node-type", "", "Filter by node type (full, archive)")
-		cmd.Flags().StringVar(&epProtocol, "protocol", "", "Filter by protocol (https, wss)")
-		cmd.Flags().StringVar(&epNetwork, "network", "", "Filter by network (mainnet, testnet, or network name)")
-	}
+	endpointsCmd.PersistentFlags().StringVar(&epEcosystem, "ecosystem", "", "Filter by ecosystem (evm, substrate, cosmos, move)")
+	endpointsCmd.PersistentFlags().StringVar(&epNodeType, "node-type", "", "Filter by node type (full, archive)")
+	endpointsCmd.PersistentFlags().StringVar(&epProtocol, "protocol", "", "Filter by protocol (https, wss)")
+	endpointsCmd.PersistentFlags().StringVar(&epNetwork, "network", "", "Filter by network (mainnet, testnet, or network name)")
 	endpointsCmd.AddCommand(endpointsListCmd, endpointsSearchCmd, endpointsGetCmd)
 	rootCmd.AddCommand(endpointsCmd)
 }

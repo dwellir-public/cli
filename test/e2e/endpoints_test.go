@@ -5,6 +5,7 @@ package e2e
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -64,5 +65,19 @@ func TestEndpointsNetworkFilter(t *testing.T) {
 	network := networks[0].(map[string]interface{})
 	if network["name"] != "Mainnet" {
 		t.Fatalf("expected Mainnet, got %v", network["name"])
+	}
+}
+
+func TestEndpointsHelpShowsFilters(t *testing.T) {
+	res := runCLI(t, "endpoints", "--help")
+	if res.exitCode != 0 {
+		t.Fatalf("expected success exit code, got %d\nstderr: %s\nstdout: %s", res.exitCode, res.stderr, res.stdout)
+	}
+
+	if !strings.Contains(res.stdout, "--network") ||
+		!strings.Contains(res.stdout, "--ecosystem") ||
+		!strings.Contains(res.stdout, "--node-type") ||
+		!strings.Contains(res.stdout, "--protocol") {
+		t.Fatalf("expected endpoints help to mention filter flags, got:\n%s", res.stdout)
 	}
 }
