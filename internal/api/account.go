@@ -1,19 +1,100 @@
 package api
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 type AccountInfo struct {
-	Name                string                     `json:"name"`
-	ServerLocation      string                     `json:"idealServerLocation,omitempty"`
-	TaxID               string                     `json:"tax_id,omitempty"`
-	UsageLimits         *SubscriptionInfo          `json:"usageLimits,omitempty"`
-	CurrentSubscription *CurrentSubscriptionWindow `json:"currentSubscription,omitempty"`
-	Subscription        *SubscriptionInfo          `json:"-"`
+	Name                 string                     `json:"name"`
+	ServerLocation       string                     `json:"idealServerLocation,omitempty"`
+	TaxID                string                     `json:"tax_id,omitempty"`
+	UsageLimits          *SubscriptionInfo          `json:"usageLimits,omitempty"`
+	CurrentSubscription  *CurrentSubscriptionWindow `json:"currentSubscription,omitempty"`
+	PremiumEndpointState PremiumEndpointState       `json:"premiumEndpointState,omitempty"`
+	Subscription         *SubscriptionInfo          `json:"-"`
 }
 
 type CurrentSubscriptionWindow struct {
-	StartDate   string `json:"startDate,omitempty"`
-	RenewalDate string `json:"renewalDate,omitempty"`
+	StartDate          string                     `json:"startDate,omitempty"`
+	RenewalDate        string                     `json:"renewalDate,omitempty"`
+	SubscriptionAddOns []OutsetaSubscriptionAddOn `json:"subscriptionAddOns,omitempty"`
+}
+
+type OutsetaAddOnProduct struct {
+	UID       string `json:"uid,omitempty"`
+	UIDLegacy string `json:"Uid,omitempty"`
+}
+
+type OutsetaSubscriptionAddOn struct {
+	UID      string               `json:"uid,omitempty"`
+	Name     string               `json:"name,omitempty"`
+	AddOnUID string               `json:"addOnUid,omitempty"`
+	EndDate  string               `json:"endDate,omitempty"`
+	AddOn    *OutsetaAddOnProduct `json:"addOn,omitempty"`
+}
+
+func (a OutsetaSubscriptionAddOn) CanonicalAddOnUID() string {
+	if uid := strings.TrimSpace(a.AddOnUID); uid != "" {
+		return uid
+	}
+	if a.AddOn != nil {
+		if uid := strings.TrimSpace(a.AddOn.UID); uid != "" {
+			return uid
+		}
+		if uid := strings.TrimSpace(a.AddOn.UIDLegacy); uid != "" {
+			return uid
+		}
+	}
+	return ""
+}
+
+type PremiumEndpointStatus string
+
+const (
+	PremiumStatusLocked       PremiumEndpointStatus = "locked"
+	PremiumStatusTrialActive  PremiumEndpointStatus = "trial-active"
+	PremiumStatusTrialExpired PremiumEndpointStatus = "trial-expired"
+	PremiumStatusAddonActive  PremiumEndpointStatus = "addon-active"
+)
+
+type PremiumEndpointStateEntry struct {
+	HostSlug       string                `json:"hostSlug"`
+	Status         PremiumEndpointStatus `json:"status"`
+	TrialStartedAt string                `json:"trialStartedAt,omitempty"`
+	TrialEndsAt    string                `json:"trialEndsAt,omitempty"`
+	UpdatedAt      string                `json:"updatedAt,omitempty"`
+	Source         string                `json:"source,omitempty"`
+	AddOnUID       string                `json:"outsetaAddOnUid,omitempty"`
+}
+
+type PremiumEndpointState []PremiumEndpointStateEntry
+
+func (p *PremiumEndpointState) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*p = nil
+		return nil
+	}
+
+	var direct []PremiumEndpointStateEntry
+	if err := json.Unmarshal(data, &direct); err == nil {
+		*p = direct
+		return nil
+	}
+
+	var encoded string
+	if err := json.Unmarshal(data, &encoded); err != nil {
+		return err
+	}
+	if strings.TrimSpace(encoded) == "" {
+		*p = nil
+		return nil
+	}
+	if err := json.Unmarshal([]byte(encoded), &direct); err != nil {
+		return err
+	}
+	*p = direct
+	return nil
 }
 
 type DiscountInfo struct {

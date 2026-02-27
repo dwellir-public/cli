@@ -60,6 +60,7 @@ var endpointsListCmd = &cobra.Command{
 		if err != nil {
 			return formatCommandError(err)
 		}
+		chains = applyPremiumEndpointAccess(client, chains)
 		chains, err = applyEndpointKey(cmd, client, chains, selectorOverride)
 		if err != nil {
 			return formatEndpointKeyError(err)
@@ -90,6 +91,7 @@ var endpointsSearchCmd = &cobra.Command{
 		if err != nil {
 			return formatCommandError(err)
 		}
+		chains = applyPremiumEndpointAccess(client, chains)
 		chains, err = applyEndpointKey(cmd, client, chains, selectorOverride)
 		if err != nil {
 			return formatEndpointKeyError(err)
@@ -120,6 +122,7 @@ var endpointsGetCmd = &cobra.Command{
 		if err != nil {
 			return formatCommandError(err)
 		}
+		chains = applyPremiumEndpointAccess(client, chains)
 		chains, err = applyEndpointKey(cmd, client, chains, selectorOverride)
 		if err != nil {
 			return formatEndpointKeyError(err)
@@ -333,4 +336,17 @@ func formatEndpointKeyError(err error) error {
 		return getFormatter().Error("validation_error", keyErr.message, keyErr.help)
 	}
 	return formatCommandError(err)
+}
+
+func applyPremiumEndpointAccess(client *api.Client, chains []api.Chain) []api.Chain {
+	if len(chains) == 0 {
+		return chains
+	}
+
+	info, err := api.NewAccountAPI(client).Info()
+	if err != nil {
+		return chains
+	}
+
+	return api.ApplyPremiumEndpointLabels(chains, info)
 }

@@ -20,10 +20,13 @@ type Network struct {
 }
 
 type Node struct {
-	ID       int      `json:"id"`
-	HTTPS    string   `json:"https"`
-	WSS      string   `json:"wss"`
-	NodeType NodeType `json:"node_type"`
+	ID            int      `json:"id"`
+	HTTPS         string   `json:"https"`
+	WSS           string   `json:"wss"`
+	NodeType      NodeType `json:"node_type"`
+	Premium       bool     `json:"premium,omitempty"`
+	PremiumStatus string   `json:"premiumStatus,omitempty"`
+	TrialEndsAt   string   `json:"trialEndsAt,omitempty"`
 }
 
 type NodeType struct {

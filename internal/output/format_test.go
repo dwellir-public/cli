@@ -229,6 +229,57 @@ func TestHumanUsageMethodsBreakdown(t *testing.T) {
 	}
 }
 
+func TestHumanEndpointsShowsPremiumStatusAndTrialExpiry(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewHumanFormatter(&buf)
+
+	err := f.Success("endpoints.search", []api.Chain{
+		{
+			Name:      "Hyperliquid HyperCore Orderbook",
+			Ecosystem: "hyperliquid",
+			Networks: []api.Network{
+				{
+					Name: "Mainnet",
+					Nodes: []api.Node{
+						{
+							NodeType:      api.NodeType{Name: "Full"},
+							HTTPS:         "[locked premium endpoint]",
+							Premium:       true,
+							PremiumStatus: "locked",
+						},
+					},
+				},
+				{
+					Name: "Mainnet",
+					Nodes: []api.Node{
+						{
+							NodeType:      api.NodeType{Name: "Full"},
+							HTTPS:         "https://api-hyperliquid-mainnet-orderbook.n.dwellir.com/<key>/ws",
+							Premium:       true,
+							PremiumStatus: "trial-active",
+							TrialEndsAt:   "2026-03-01T00:00:00Z",
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "PREMIUM") {
+		t.Fatalf("expected premium column/header, got:\n%s", got)
+	}
+	if !strings.Contains(strings.ToLower(got), "locked") {
+		t.Fatalf("expected locked premium label, got:\n%s", got)
+	}
+	if !strings.Contains(strings.ToLower(got), "trial") || !strings.Contains(strings.ToLower(got), "until") {
+		t.Fatalf("expected trial-until label, got:\n%s", got)
+	}
+}
+
 func TestTOONSuccess(t *testing.T) {
 	var buf bytes.Buffer
 	f := New("toon", &buf)
