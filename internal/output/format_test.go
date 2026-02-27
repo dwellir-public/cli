@@ -204,3 +204,24 @@ func TestHumanUsageMethodsBreakdown(t *testing.T) {
 		t.Fatalf("expected usage methods breakdown output, got:\n%s", got)
 	}
 }
+
+func TestTOONSuccess(t *testing.T) {
+	var buf bytes.Buffer
+	f := New("toon", &buf)
+
+	err := f.Success("version", map[string]string{"version": "0.1.10"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "ok: true") {
+		t.Fatalf("expected TOON response envelope, got:\n%s", got)
+	}
+	if !strings.Contains(got, "command: version") {
+		t.Fatalf("expected TOON metadata command field, got:\n%s", got)
+	}
+	if strings.Contains(got, "{") {
+		t.Fatalf("expected TOON (non-JSON) output, got:\n%s", got)
+	}
+}

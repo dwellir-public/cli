@@ -48,8 +48,8 @@ func (c *Config) Set(key, value string) error {
 	}
 	switch key {
 	case "output":
-		if value != "json" && value != "human" {
-			return fmt.Errorf("output must be 'json' or 'human'")
+		if value != "json" && value != "human" && value != "toon" {
+			return fmt.Errorf("output must be 'json', 'human', or 'toon'")
 		}
 		c.Output = value
 	case "default_profile":

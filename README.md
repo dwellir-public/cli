@@ -139,6 +139,7 @@ Every command supports:
 
 - `--human` (default): readable output
 - `--json`: structured machine-readable output
+- `--toon`: TOON output (experimental, JSON-compatible shape)
 
 Example:
 
@@ -161,6 +162,8 @@ JSON responses use a common envelope:
 
 Errors return `ok: false` and a non-zero exit code.
 
+JSON remains the canonical output contract for integrations. TOON is an alternate wire format.
+
 ## Profiles and Config
 
 Config is stored in:
@@ -179,6 +182,7 @@ Per-project profile binding is supported via `.dwellir.json`:
 ```bash
 dwellir config list
 dwellir config set output json
+dwellir config set output toon
 dwellir config set default_profile work
 dwellir config get output
 ```
