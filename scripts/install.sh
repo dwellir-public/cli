@@ -23,15 +23,26 @@ echo "Downloading dwellir v${LATEST} for ${OS}/${ARCH}..."
 TMP=$(mktemp -d)
 curl -fsSL "$URL" | tar -xz -C "$TMP"
 
-INSTALL_DIR="/usr/local/bin"
-if [ ! -w "$INSTALL_DIR" ]; then
-  echo "Installing to $INSTALL_DIR (requires sudo)..."
-  sudo mv "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
+if [ -n "${INSTALL_DIR:-}" ]; then
+  TARGET_DIR="$INSTALL_DIR"
+elif [ -w "/usr/local/bin" ]; then
+  TARGET_DIR="/usr/local/bin"
 else
-  mv "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
+  TARGET_DIR="$HOME/.local/bin"
 fi
-chmod +x "$INSTALL_DIR/$BINARY"
+
+mkdir -p "$TARGET_DIR"
+if [ "$TARGET_DIR" = "/usr/local/bin" ] && [ ! -w "$TARGET_DIR" ]; then
+  echo "Installing to $TARGET_DIR (requires sudo)..."
+  sudo mv "$TMP/$BINARY" "$TARGET_DIR/$BINARY"
+else
+  mv "$TMP/$BINARY" "$TARGET_DIR/$BINARY"
+fi
+chmod +x "$TARGET_DIR/$BINARY"
 rm -rf "$TMP"
 
-echo "dwellir v${LATEST} installed to $INSTALL_DIR/$BINARY"
+echo "dwellir v${LATEST} installed to $TARGET_DIR/$BINARY"
+if [ "$TARGET_DIR" = "$HOME/.local/bin" ]; then
+  echo "Ensure $HOME/.local/bin is in your PATH."
+fi
 dwellir version

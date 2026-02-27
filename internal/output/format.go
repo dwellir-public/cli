@@ -1,6 +1,9 @@
 package output
 
-import "io"
+import (
+	"errors"
+	"io"
+)
 
 // Response is the JSON envelope for all CLI output.
 type Response struct {
@@ -27,6 +30,24 @@ type Formatter interface {
 	Success(command string, data interface{}) error
 	Error(code string, message string, help string) error
 	Write(data interface{}) error
+}
+
+// RenderedError indicates an error message has already been rendered to the user.
+type RenderedError struct {
+	Message string
+}
+
+func (e *RenderedError) Error() string {
+	return e.Message
+}
+
+// IsRenderedError reports whether err was already emitted by an output formatter.
+func IsRenderedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var rendered *RenderedError
+	return errors.As(err, &rendered)
 }
 
 // New returns a Formatter based on the format string ("json" or "human").

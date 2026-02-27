@@ -120,3 +120,57 @@ func TestSearchEndpointsByNetworkFilter(t *testing.T) {
 		t.Fatalf("expected sepolia network by name filter, got %+v", sepoliaByName)
 	}
 }
+
+func TestSearchEndpointsByProtocolFilter(t *testing.T) {
+	chains := []testChain{
+		{
+			ID: 1, Name: "Base", ImageURL: "base.png",
+			Networks: []testNetwork{
+				{
+					ID: 1, Name: "Mainnet",
+					Nodes: []testNode{
+						{ID: 1, HTTPS: "https://api-base-mainnet.n.dwellir.com/<key>", WSS: "wss://api-base-mainnet.n.dwellir.com/<key>", NodeType: testNodeType{Name: "archive"}},
+					},
+				},
+			},
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(chains); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "token")
+	ep := NewEndpointsAPI(client)
+
+	httpsOnly, err := ep.Search("base", "", "", "https", "")
+	if err != nil {
+		t.Fatalf("unexpected error filtering by https: %v", err)
+	}
+	if len(httpsOnly) != 1 || len(httpsOnly[0].Networks) != 1 || len(httpsOnly[0].Networks[0].Nodes) != 1 {
+		t.Fatalf("expected one https endpoint match, got %+v", httpsOnly)
+	}
+	if httpsOnly[0].Networks[0].Nodes[0].HTTPS == "" {
+		t.Fatalf("expected https endpoint to be preserved")
+	}
+	if httpsOnly[0].Networks[0].Nodes[0].WSS != "" {
+		t.Fatalf("expected wss endpoint to be removed for --protocol https, got %q", httpsOnly[0].Networks[0].Nodes[0].WSS)
+	}
+
+	wssOnly, err := ep.Search("base", "", "", "wss", "")
+	if err != nil {
+		t.Fatalf("unexpected error filtering by wss: %v", err)
+	}
+	if len(wssOnly) != 1 || len(wssOnly[0].Networks) != 1 || len(wssOnly[0].Networks[0].Nodes) != 1 {
+		t.Fatalf("expected one wss endpoint match, got %+v", wssOnly)
+	}
+	if wssOnly[0].Networks[0].Nodes[0].WSS == "" {
+		t.Fatalf("expected wss endpoint to be preserved")
+	}
+	if wssOnly[0].Networks[0].Nodes[0].HTTPS != "" {
+		t.Fatalf("expected https endpoint to be removed for --protocol wss, got %q", wssOnly[0].Networks[0].Nodes[0].HTTPS)
+	}
+}

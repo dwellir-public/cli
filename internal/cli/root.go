@@ -1,6 +1,13 @@
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"os"
+
+	"github.com/spf13/cobra"
+
+	"github.com/dwellir-public/cli/internal/config"
+	"github.com/dwellir-public/cli/internal/output"
+)
 
 var (
 	jsonOutput    bool
@@ -36,8 +43,56 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&profile, "profile", "", "Use a specific auth profile")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&anonTelemetry, "anon-telemetry", false, "Anonymize telemetry data")
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
 }
 
 func Execute() error {
-	return rootCmd.Execute()
+	if err := rootCmd.Execute(); err != nil {
+		if output.IsRenderedError(err) {
+			return err
+		}
+		code, message, help := classifyExecutionError(err)
+		f := getFormatter()
+		if isJSONRequested(os.Args[1:]) {
+			f = output.New("json", rootCmd.OutOrStdout())
+		}
+		return f.Error(code, message, help)
+	}
+	return nil
+}
+
+func isJSONRequested(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	for _, arg := range args {
+		if arg == "--json" {
+			return true
+		}
+	}
+	return false
+}
+
+func buildFormatter(format string) output.Formatter {
+	return output.New(format, rootCmd.OutOrStdout())
+}
+
+func resolvedOutputFormat() string {
+	cfg, _ := config.Load(config.DefaultConfigDir())
+	format := cfg.Output
+	if jsonOutput {
+		format = "json"
+	}
+	if humanOutput {
+		format = "human"
+	}
+	return format
+}
+
+func isHumanOutput() bool {
+	return resolvedOutputFormat() != "json"
+}
+
+func getFormatter() output.Formatter {
+	return buildFormatter(resolvedOutputFormat())
 }
