@@ -80,6 +80,9 @@ func buildFormatter(format string) output.Formatter {
 func resolvedOutputFormat() string {
 	cfg, _ := config.Load(config.DefaultConfigDir())
 	format := cfg.Output
+	if isAgentEnvironment() {
+		format = "json"
+	}
 	if jsonOutput {
 		format = "json"
 	}
@@ -95,4 +98,21 @@ func isHumanOutput() bool {
 
 func getFormatter() output.Formatter {
 	return buildFormatter(resolvedOutputFormat())
+}
+
+func isAgentEnvironment() bool {
+	markers := [...]string{
+		"CODEX_CI",
+		"CODEX_THREAD_ID",
+		"CLAUDECODE",
+		"CLAUDE_CODE_ENTRYPOINT",
+		"OPENCODE",
+		"CURSOR_AGENT",
+	}
+	for _, key := range markers {
+		if os.Getenv(key) != "" {
+			return true
+		}
+	}
+	return false
 }
