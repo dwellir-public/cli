@@ -187,3 +187,20 @@ func TestHumanEndpointsUsesProtocolColumn(t *testing.T) {
 		t.Fatalf("expected wss endpoint row, got:\n%s", got)
 	}
 }
+
+func TestHumanUsageMethodsBreakdown(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewHumanFormatter(&buf)
+
+	err := f.Success("usage.methods", []api.UsageBreakdown{
+		{Group: "eth_call", Requests: 10, Responses: 9, RateLimited: 1},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "eth_call") || !strings.Contains(got, "RATE LIMITED") {
+		t.Fatalf("expected usage methods breakdown output, got:\n%s", got)
+	}
+}

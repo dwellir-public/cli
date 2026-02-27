@@ -2,14 +2,16 @@ package output
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/glamour"
 	"github.com/jedib0t/go-pretty/v6/table"
+	"golang.org/x/term"
 
 	"github.com/dwellir-public/cli/internal/api"
 )
@@ -17,6 +19,15 @@ import (
 type HumanFormatter struct {
 	w          io.Writer
 	mdRenderer *glamour.TermRenderer
+}
+
+type endpointTableRow struct {
+	chain     string
+	ecosystem string
+	network   string
+	nodeType  string
+	protocol  string
+	endpoint  string
 }
 
 func NewHumanFormatter(w io.Writer) *HumanFormatter {
@@ -37,6 +48,10 @@ func (f *HumanFormatter) Success(command string, data interface{}) error {
 		return f.writeUsageHistory(data)
 	case "usage.rps":
 		return f.writeUsageRPS(data)
+	case "usage.methods":
+		return f.writeUsageBreakdown(data)
+	case "usage.costs":
+		return f.writeUsageCosts(data)
 	case "logs.errors":
 		return f.writeLogsErrors(data)
 	case "logs.stats":
@@ -69,7 +84,7 @@ func (f *HumanFormatter) Error(code string, message string, help string) error {
 			return err
 		}
 	}
-	return errors.New(message)
+	return &RenderedError{Message: message}
 }
 
 func (f *HumanFormatter) Write(data interface{}) error {
@@ -180,6 +195,10 @@ func (f *HumanFormatter) writeUsageSummary(data interface{}) error {
 }
 
 func (f *HumanFormatter) writeUsageHistory(data interface{}) error {
+	if breakdown, ok := data.([]api.UsageBreakdown); ok {
+		return f.writeUsageBreakdown(breakdown)
+	}
+
 	history, ok := data.([]api.UsageHistory)
 	if !ok {
 		return f.Write(data)
@@ -211,6 +230,89 @@ func (f *HumanFormatter) writeUsageRPS(data interface{}) error {
 		tw.AppendRow(table.Row{point.Timestamp, fmt.Sprintf("%.2f", point.RPS)})
 	}
 	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeUsageBreakdown(data interface{}) error {
+	breakdown, ok := data.([]api.UsageBreakdown)
+	if !ok {
+		return f.Write(data)
+	}
+	if len(breakdown) == 0 {
+		_, err := fmt.Fprintln(f.w, "No usage data found.")
+		return err
+	}
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Group", "Requests", "Responses", "Rate Limited"})
+	for _, row := range breakdown {
+		tw.AppendRow(table.Row{row.Group, row.Requests, row.Responses, row.RateLimited})
+	}
+	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeUsageCosts(data interface{}) error {
+	report, ok := data.(api.CostReport)
+	if !ok {
+		if ptr, ptrOK := data.(*api.CostReport); ptrOK && ptr != nil {
+			report = *ptr
+			ok = true
+		}
+	}
+	if !ok {
+		return f.Write(data)
+	}
+
+	if !report.Supported {
+		if report.UnsupportedHint != "" {
+			_, err := fmt.Fprintf(f.w, "%s\n", report.UnsupportedHint)
+			return err
+		}
+		_, err := fmt.Fprintln(f.w, "Your plan does not support usage-based cost breakdown.")
+		return err
+	}
+
+	if err := f.renderKeyValueRows([][2]string{
+		{"Plan", report.PlanName},
+		{"Interval start", report.IntervalStart},
+		{"Interval end", report.IntervalEnd},
+		{"Total responses", fmt.Sprintf("%d", report.TotalResponses)},
+		{"Total cost (USD)", fmt.Sprintf("$%.2f", report.TotalCost)},
+	}); err != nil {
+		return err
+	}
+
+	if len(report.ByDomain) > 0 {
+		if _, err := fmt.Fprintln(f.w); err != nil {
+			return err
+		}
+		tw := table.NewWriter()
+		tw.AppendHeader(table.Row{"Domain", "Responses", "Cost (USD)"})
+		for _, row := range report.ByDomain {
+			tw.AppendRow(table.Row{row.Group, row.Responses, fmt.Sprintf("$%.2f", row.Cost)})
+		}
+		if err := f.renderTable(tw); err != nil {
+			return err
+		}
+	}
+
+	if len(report.Segments) > 0 {
+		if _, err := fmt.Fprintln(f.w); err != nil {
+			return err
+		}
+		tw := table.NewWriter()
+		tw.AppendHeader(table.Row{"Segment Start", "Segment End", "Responses", "Cost (USD)", "Type"})
+		for _, segment := range report.Segments {
+			tw.AppendRow(table.Row{
+				segment.Start,
+				segment.End,
+				segment.Responses,
+				fmt.Sprintf("$%.2f", segment.Cost),
+				segment.CostType,
+			})
+		}
+		return f.renderTable(tw)
+	}
+
+	return nil
 }
 
 func (f *HumanFormatter) writeLogsErrors(data interface{}) error {
@@ -307,43 +409,57 @@ func (f *HumanFormatter) writeEndpoints(data interface{}) error {
 		return f.Write(data)
 	}
 
+	rows := make([]endpointTableRow, 0)
 	tw := table.NewWriter()
 	tw.AppendHeader(table.Row{"Chain", "Ecosystem", "Network", "Node Type", "Protocol", "Endpoint"})
-	count := 0
 
 	for _, chain := range chains {
 		for _, network := range chain.Networks {
 			for _, node := range network.Nodes {
 				if node.HTTPS != "" {
-					tw.AppendRow(table.Row{
-						chain.Name,
-						chain.Ecosystem,
-						network.Name,
-						node.NodeType.Name,
-						"https",
-						node.HTTPS,
+					rows = append(rows, endpointTableRow{
+						chain:     chain.Name,
+						ecosystem: chain.Ecosystem,
+						network:   network.Name,
+						nodeType:  node.NodeType.Name,
+						protocol:  "https",
+						endpoint:  node.HTTPS,
 					})
-					count++
 				}
 				if node.WSS != "" {
-					tw.AppendRow(table.Row{
-						chain.Name,
-						chain.Ecosystem,
-						network.Name,
-						node.NodeType.Name,
-						"wss",
-						node.WSS,
+					rows = append(rows, endpointTableRow{
+						chain:     chain.Name,
+						ecosystem: chain.Ecosystem,
+						network:   network.Name,
+						nodeType:  node.NodeType.Name,
+						protocol:  "wss",
+						endpoint:  node.WSS,
 					})
-					count++
 				}
 			}
 		}
 	}
 
-	if count == 0 {
+	if len(rows) == 0 {
 		_, err := fmt.Fprintln(f.w, "No endpoints found.")
 		return err
 	}
+
+	if width := terminalWidthFromWriter(f.w); width > 0 && width < 130 {
+		return f.writeEndpointsCompact(rows, width)
+	}
+
+	for _, row := range rows {
+		tw.AppendRow(table.Row{
+			row.chain,
+			row.ecosystem,
+			row.network,
+			row.nodeType,
+			row.protocol,
+			row.endpoint,
+		})
+	}
+
 	return f.renderTable(tw)
 }
 
@@ -370,8 +486,10 @@ func (f *HumanFormatter) writeAccountInfo(data interface{}) error {
 		rows = append(rows, [2]string{"Tax ID", info.TaxID})
 	}
 	if info.Subscription != nil {
+		if strings.TrimSpace(info.Subscription.PlanName) != "" {
+			rows = append(rows, [2]string{"Subscription plan", info.Subscription.PlanName})
+		}
 		rows = append(rows,
-			[2]string{"Subscription plan", info.Subscription.PlanName},
 			[2]string{"Rate limit", fmt.Sprintf("%d", info.Subscription.RateLimit)},
 			[2]string{"Burst limit", fmt.Sprintf("%d", info.Subscription.BurstLimit)},
 			[2]string{"API keys limit", fmt.Sprintf("%d", info.Subscription.APIKeysLimit)},
@@ -397,14 +515,18 @@ func (f *HumanFormatter) writeSubscription(data interface{}) error {
 	if !ok || sub == nil {
 		return f.Write(data)
 	}
-	return f.renderKeyValueRows([][2]string{
-		{"Plan", sub.PlanName},
-		{"Rate limit", fmt.Sprintf("%d", sub.RateLimit)},
-		{"Burst limit", fmt.Sprintf("%d", sub.BurstLimit)},
-		{"API keys limit", fmt.Sprintf("%d", sub.APIKeysLimit)},
-		{"Daily quota", formatQuota(sub.DailyQuota)},
-		{"Monthly quota", formatQuota(sub.MonthlyQuota)},
-	})
+	rows := make([][2]string, 0, 6)
+	if strings.TrimSpace(sub.PlanName) != "" {
+		rows = append(rows, [2]string{"Plan", sub.PlanName})
+	}
+	rows = append(rows,
+		[2]string{"Rate limit", fmt.Sprintf("%d", sub.RateLimit)},
+		[2]string{"Burst limit", fmt.Sprintf("%d", sub.BurstLimit)},
+		[2]string{"API keys limit", fmt.Sprintf("%d", sub.APIKeysLimit)},
+		[2]string{"Daily quota", formatQuota(sub.DailyQuota)},
+		[2]string{"Monthly quota", formatQuota(sub.MonthlyQuota)},
+	)
+	return f.renderKeyValueRows(rows)
 }
 
 func (f *HumanFormatter) writeDocsEntries(data interface{}) error {
@@ -416,6 +538,24 @@ func (f *HumanFormatter) writeDocsEntries(data interface{}) error {
 		_, err := fmt.Fprintln(f.w, "No docs pages found.")
 		return err
 	}
+
+	if width := terminalWidthFromWriter(f.w); width > 0 && width < 120 {
+		for _, entry := range entries {
+			title := truncateWithEllipsis(entry.Title, 72)
+			section := truncateWithEllipsis(entry.Section, 40)
+			description := truncateWithEllipsis(entry.Description, 92)
+			if _, err := fmt.Fprintf(f.w, "%s (%s) · %s\n", title, entry.Slug, section); err != nil {
+				return err
+			}
+			if description != "" {
+				if _, err := fmt.Fprintf(f.w, "  %s\n", description); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
 	tw := table.NewWriter()
 	tw.AppendHeader(table.Row{"Title", "Slug", "Section", "Description"})
 	for _, entry := range entries {
@@ -521,4 +661,49 @@ func humanizeKey(raw string) string {
 		parts[i] = strings.ToUpper(part[:1]) + part[1:]
 	}
 	return strings.Join(parts, " ")
+}
+
+func (f *HumanFormatter) writeEndpointsCompact(rows []endpointTableRow, width int) error {
+	_ = width // reserved for future width-aware tuning
+	for _, row := range rows {
+		if _, err := fmt.Fprintf(
+			f.w,
+			"%s · %s · %s · %s · %s\n  %s\n",
+			truncateWithEllipsis(row.chain, 22),
+			truncateWithEllipsis(row.ecosystem, 12),
+			truncateWithEllipsis(row.network, 24),
+			truncateWithEllipsis(row.nodeType, 12),
+			row.protocol,
+			row.endpoint,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func terminalWidthFromWriter(w io.Writer) int {
+	file, ok := w.(*os.File)
+	if !ok {
+		return 0
+	}
+	width, _, err := term.GetSize(int(file.Fd()))
+	if err != nil || width <= 0 {
+		return 0
+	}
+	return width
+}
+
+func truncateWithEllipsis(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(value) <= limit {
+		return value
+	}
+	if limit == 1 {
+		return "…"
+	}
+	runes := []rune(value)
+	return string(runes[:limit-1]) + "…"
 }

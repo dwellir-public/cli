@@ -1,6 +1,9 @@
 package api
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 type Chain struct {
 	ID        int       `json:"id"`
@@ -63,27 +66,8 @@ func (e *EndpointsAPI) Search(query string, ecosystem string, nodeType string, p
 			if !netMatch {
 				continue
 			}
-			if !matchesNetworkFilter(net.Name, network) {
-				continue
-			}
-
-			var matchedNodes []Node
-			for _, node := range net.Nodes {
-				if nodeType != "" && !strings.EqualFold(node.NodeType.Name, nodeType) {
-					continue
-				}
-				if protocol == "https" && node.HTTPS == "" {
-					continue
-				}
-				if protocol == "wss" && node.WSS == "" {
-					continue
-				}
-				matchedNodes = append(matchedNodes, node)
-			}
-
-			if len(matchedNodes) > 0 {
-				net.Nodes = matchedNodes
-				matchedNetworks = append(matchedNetworks, net)
+			if filteredNetwork, ok := filterNetwork(net, nodeType, protocol, network); ok {
+				matchedNetworks = append(matchedNetworks, filteredNetwork)
 			}
 		}
 
@@ -94,6 +78,43 @@ func (e *EndpointsAPI) Search(query string, ecosystem string, nodeType string, p
 	}
 
 	return filtered, nil
+}
+
+// Get finds one specific chain by exact name/slug match and applies endpoint filters.
+func (e *EndpointsAPI) Get(chainLookup string, ecosystem string, nodeType string, protocol string, network string) ([]Chain, error) {
+	chains, err := e.List()
+	if err != nil {
+		return nil, err
+	}
+
+	lookup := strings.TrimSpace(chainLookup)
+	if lookup == "" {
+		return nil, nil
+	}
+
+	for _, chain := range chains {
+		if ecosystem != "" && !strings.EqualFold(chain.Ecosystem, ecosystem) {
+			continue
+		}
+		if !matchesChainLookup(chain.Name, lookup) {
+			continue
+		}
+
+		var matchedNetworks []Network
+		for _, net := range chain.Networks {
+			if filteredNetwork, ok := filterNetwork(net, nodeType, protocol, network); ok {
+				matchedNetworks = append(matchedNetworks, filteredNetwork)
+			}
+		}
+
+		if len(matchedNetworks) == 0 {
+			return nil, nil
+		}
+		chain.Networks = matchedNetworks
+		return []Chain{chain}, nil
+	}
+
+	return nil, nil
 }
 
 func matchesNetworkFilter(networkName, filter string) bool {
@@ -111,4 +132,72 @@ func matchesNetworkFilter(networkName, filter string) bool {
 	default:
 		return strings.Contains(name, filter)
 	}
+}
+
+func filterNetwork(net Network, nodeType string, protocol string, network string) (Network, bool) {
+	if !matchesNetworkFilter(net.Name, network) {
+		return Network{}, false
+	}
+
+	nodeType = strings.TrimSpace(nodeType)
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+
+	var matchedNodes []Node
+	for _, node := range net.Nodes {
+		if nodeType != "" && !strings.EqualFold(node.NodeType.Name, nodeType) {
+			continue
+		}
+		if protocol == "https" && node.HTTPS == "" {
+			continue
+		}
+		if protocol == "wss" && node.WSS == "" {
+			continue
+		}
+		filteredNode := node
+		switch protocol {
+		case "https":
+			filteredNode.WSS = ""
+		case "wss":
+			filteredNode.HTTPS = ""
+		}
+		matchedNodes = append(matchedNodes, filteredNode)
+	}
+
+	if len(matchedNodes) == 0 {
+		return Network{}, false
+	}
+
+	net.Nodes = matchedNodes
+	return net, true
+}
+
+func matchesChainLookup(chainName string, lookup string) bool {
+	name := strings.TrimSpace(chainName)
+	target := strings.TrimSpace(lookup)
+	if strings.EqualFold(name, target) {
+		return true
+	}
+	return normalizeChainLookup(name) == normalizeChainLookup(target)
+}
+
+func normalizeChainLookup(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }

@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/dwellir-public/cli/internal/config"
-	"github.com/dwellir-public/cli/internal/output"
 )
 
 var configCmd = &cobra.Command{
@@ -33,19 +32,27 @@ var configSetCmd = &cobra.Command{
 }
 
 var configGetCmd = &cobra.Command{
-	Use:   "get <key>",
-	Short: "Get a config value",
-	Args:  cobra.ExactArgs(1),
+	Use:   "get [key]",
+	Short: "Get one config value, or all values when no key is provided",
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load(config.DefaultConfigDir())
 		if err != nil {
 			return formatCommandError(err)
 		}
+		f := getFormatter()
+		if len(args) == 0 {
+			return f.Success("config.get", cfg.All())
+		}
+
 		val := cfg.Get(args[0])
 		if val == "" {
-			return fmt.Errorf("unknown config key: %s", args[0])
+			return f.Error(
+				"validation_error",
+				fmt.Sprintf("Unknown config key %q.", args[0]),
+				"Valid keys: output, default_profile\nExamples:\n  dwellir config get output\n  dwellir config get",
+			)
 		}
-		f := getFormatter()
 		return f.Success("config.get", map[string]string{args[0]: val})
 	},
 }
@@ -66,16 +73,4 @@ var configListCmd = &cobra.Command{
 func init() {
 	configCmd.AddCommand(configSetCmd, configGetCmd, configListCmd)
 	rootCmd.AddCommand(configCmd)
-}
-
-func getFormatter() output.Formatter {
-	cfg, _ := config.Load(config.DefaultConfigDir())
-	format := cfg.Output
-	if jsonOutput {
-		format = "json"
-	}
-	if humanOutput {
-		format = "human"
-	}
-	return output.New(format, rootCmd.OutOrStdout())
 }

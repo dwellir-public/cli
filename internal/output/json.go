@@ -2,7 +2,6 @@ package output
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"time"
 )
@@ -39,7 +38,7 @@ func (f *JSONFormatter) Error(code string, message string, help string) error {
 	if err := f.encode(resp); err != nil {
 		return err
 	}
-	return errors.New(message)
+	return &RenderedError{Message: message}
 }
 
 func (f *JSONFormatter) Write(data interface{}) error {

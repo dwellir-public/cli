@@ -1,6 +1,10 @@
 package api
 
-import "time"
+import (
+	"encoding/json"
+	"sort"
+	"strings"
+)
 
 type UsageSummary struct {
 	TotalRequests  int    `json:"total_requests"`
@@ -11,9 +15,29 @@ type UsageSummary struct {
 }
 
 type UsageHistory struct {
-	Timestamp string `json:"timestamp"`
-	Requests  int    `json:"requests"`
-	Responses int    `json:"responses"`
+	Timestamp  string `json:"timestamp"`
+	APIKey     string `json:"api_key,omitempty"`
+	APIKeyName string `json:"api_key_name,omitempty"`
+	Domain     string `json:"domain,omitempty"`
+	Method     string `json:"method,omitempty"`
+	Requests   int    `json:"requests"`
+	Responses  int    `json:"responses"`
+}
+
+func (u *UsageHistory) UnmarshalJSON(data []byte) error {
+	type alias UsageHistory
+	var raw struct {
+		alias
+		StartTime string `json:"start_time"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*u = UsageHistory(raw.alias)
+	if u.Timestamp == "" {
+		u.Timestamp = raw.StartTime
+	}
+	return nil
 }
 
 type RPSData struct {
@@ -21,16 +45,29 @@ type RPSData struct {
 	RPS       float64 `json:"rps"`
 }
 
+type UsageBreakdown struct {
+	Group       string `json:"group"`
+	Requests    int    `json:"requests"`
+	Responses   int    `json:"responses"`
+	RateLimited int    `json:"rate_limited"`
+}
+
 type UsageAPI struct {
 	client *Client
 }
 
 type analyticsRequest struct {
-	Interval  string `json:"interval,omitempty"`
-	StartTime string `json:"start_time,omitempty"`
-	EndTime   string `json:"end_time,omitempty"`
-	Limit     int    `json:"limit,omitempty"`
-	Offset    int    `json:"offset,omitempty"`
+	Interval  string           `json:"interval,omitempty"`
+	StartTime string           `json:"start_time,omitempty"`
+	EndTime   string           `json:"end_time,omitempty"`
+	Limit     int              `json:"limit,omitempty"`
+	Offset    int              `json:"offset,omitempty"`
+	Filter    *analyticsFilter `json:"filter,omitempty"`
+}
+
+type analyticsFilter struct {
+	APIKeys []string `json:"api_keys,omitempty"`
+	Domains []string `json:"domains,omitempty"`
 }
 
 func NewUsageAPI(client *Client) *UsageAPI {
@@ -43,7 +80,7 @@ func (u *UsageAPI) Summary() (*UsageSummary, error) {
 	return &summary, err
 }
 
-func (u *UsageAPI) History(interval string, from string, to string) ([]UsageHistory, error) {
+func (u *UsageAPI) History(interval string, from string, to string, apiKey string, fqdn string, method string) ([]UsageHistory, error) {
 	body := analyticsRequest{
 		Interval: interval,
 		Limit:    1000,
@@ -55,29 +92,181 @@ func (u *UsageAPI) History(interval string, from string, to string) ([]UsageHist
 	if to != "" {
 		body.EndTime = to
 	}
-	var history []UsageHistory
-	err := u.client.Post("/v4/organization/analytics", body, &history)
-	return history, err
+	filter := &analyticsFilter{}
+	if trimmed := strings.TrimSpace(apiKey); trimmed != "" {
+		filter.APIKeys = []string{trimmed}
+	}
+	if trimmed := strings.TrimSpace(fqdn); trimmed != "" {
+		filter.Domains = []string{trimmed}
+	}
+	if len(filter.APIKeys) > 0 || len(filter.Domains) > 0 {
+		body.Filter = filter
+	}
+
+	history := make([]UsageHistory, 0, body.Limit)
+	maxRows := 50000
+	for {
+		var page []UsageHistory
+		if err := u.client.Post("/v4/user/analytics", body, &page); err != nil {
+			return nil, err
+		}
+		history = append(history, page...)
+		if len(page) < body.Limit || len(history) >= maxRows {
+			break
+		}
+		body.Offset += body.Limit
+	}
+
+	method = strings.TrimSpace(method)
+	if method == "" {
+		return history, nil
+	}
+	filtered := make([]UsageHistory, 0, len(history))
+	for _, row := range history {
+		if strings.EqualFold(row.Method, method) {
+			filtered = append(filtered, row)
+		}
+	}
+	return filtered, nil
 }
 
-func (u *UsageAPI) RPS() ([]RPSData, error) {
-	body := analyticsRequest{
-		Interval: "hour",
-		Limit:    1000,
-		Offset:   0,
+func BuildUsageBreakdown(history []UsageHistory, keyFn func(UsageHistory) string) []UsageBreakdown {
+	grouped := map[string]*UsageBreakdown{}
+	for _, row := range history {
+		key := strings.TrimSpace(keyFn(row))
+		if key == "" {
+			key = "unknown"
+		}
+		entry, ok := grouped[key]
+		if !ok {
+			entry = &UsageBreakdown{Group: key}
+			grouped[key] = entry
+		}
+		entry.Requests += row.Requests
+		entry.Responses += row.Responses
 	}
-	var payload struct {
-		RPS float64 `json:"rps"`
+
+	out := make([]UsageBreakdown, 0, len(grouped))
+	for _, entry := range grouped {
+		entry.RateLimited = max(0, entry.Requests-entry.Responses)
+		out = append(out, *entry)
 	}
-	err := u.client.Post("/v4/organization/analytics/rps", body, &payload)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Responses == out[j].Responses {
+			return out[i].Group < out[j].Group
+		}
+		return out[i].Responses > out[j].Responses
+	})
+	return out
+}
+
+func BuildRPSTimeSeries(history []UsageHistory, interval string) []RPSData {
+	if len(history) == 0 {
+		return nil
+	}
+
+	type aggregate struct {
+		timestamp string
+		requests  int
+	}
+
+	byBucket := map[string]*aggregate{}
+	for _, row := range history {
+		if row.Timestamp == "" {
+			continue
+		}
+		item, ok := byBucket[row.Timestamp]
+		if !ok {
+			item = &aggregate{timestamp: row.Timestamp}
+			byBucket[row.Timestamp] = item
+		}
+		item.requests += row.Requests
+	}
+
+	seconds := intervalSeconds(interval)
+	series := make([]RPSData, 0, len(byBucket))
+	for _, item := range byBucket {
+		series = append(series, RPSData{
+			Timestamp: item.timestamp,
+			RPS:       float64(item.requests) / seconds,
+		})
+	}
+	sort.Slice(series, func(i, j int) bool {
+		return series[i].Timestamp < series[j].Timestamp
+	})
+	return series
+}
+
+func intervalSeconds(interval string) float64 {
+	switch strings.ToLower(strings.TrimSpace(interval)) {
+	case "minute":
+		return 60
+	case "day":
+		return 86400
+	default:
+		return 3600
+	}
+}
+
+func (u *UsageAPI) RPS(interval string, from string, to string, apiKey string, fqdn string) ([]RPSData, error) {
+	history, err := u.History(interval, from, to, apiKey, fqdn, "")
 	if err != nil {
 		return nil, err
 	}
-	rps := []RPSData{
-		{
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			RPS:       payload.RPS,
-		},
+	return BuildRPSTimeSeries(history, interval), nil
+}
+
+func UsageDomain(row UsageHistory) string {
+	return row.Domain
+}
+
+func UsageMethod(row UsageHistory) string {
+	return row.Method
+}
+
+func UsageAPIKey(row UsageHistory) string {
+	if strings.TrimSpace(row.APIKeyName) != "" {
+		return row.APIKeyName
 	}
-	return rps, err
+	return row.APIKey
+}
+
+func UsageTimestamp(row UsageHistory) string {
+	return row.Timestamp
+}
+
+func (u *UsageAPI) MethodBreakdown(interval string, from string, to string, apiKey string, fqdn string) ([]UsageBreakdown, error) {
+	history, err := u.History(interval, from, to, apiKey, fqdn, "")
+	if err != nil {
+		return nil, err
+	}
+	return BuildUsageBreakdown(history, UsageMethod), nil
+}
+
+func (u *UsageAPI) EndpointBreakdown(interval string, from string, to string, apiKey string, fqdn string, method string) ([]UsageBreakdown, error) {
+	history, err := u.History(interval, from, to, apiKey, fqdn, method)
+	if err != nil {
+		return nil, err
+	}
+	return BuildUsageBreakdown(history, UsageDomain), nil
+}
+
+func (u *UsageAPI) APIKeyBreakdown(interval string, from string, to string, fqdn string, method string) ([]UsageBreakdown, error) {
+	history, err := u.History(interval, from, to, "", fqdn, method)
+	if err != nil {
+		return nil, err
+	}
+	return BuildUsageBreakdown(history, UsageAPIKey), nil
+}
+
+func (u *UsageAPI) TimeBreakdown(interval string, from string, to string, apiKey string, fqdn string, method string) ([]UsageBreakdown, error) {
+	history, err := u.History(interval, from, to, apiKey, fqdn, method)
+	if err != nil {
+		return nil, err
+	}
+	return BuildUsageBreakdown(history, UsageTimestamp), nil
+}
+
+func (u *UsageAPI) RawHistory(interval string, from string, to string, apiKey string, fqdn string, method string) ([]UsageHistory, error) {
+	return u.History(interval, from, to, apiKey, fqdn, method)
 }

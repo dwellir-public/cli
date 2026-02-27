@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"github.com/dwellir-public/cli/internal/api"
@@ -59,7 +61,20 @@ var keysCreateCmd = &cobra.Command{
 var keysUpdateCmd = &cobra.Command{
 	Use:   "update <key-id>",
 	Short: "Update an API key",
-	Args:  cobra.ExactArgs(1),
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 1 {
+			return nil
+		}
+		if len(args) == 0 {
+			return fmt.Errorf(
+				"missing required argument <key-id>\nExample: dwellir keys update <key-id> --name \"My Key\"",
+			)
+		}
+		return fmt.Errorf(
+			"accepts 1 arg(s), received %d\nExample: dwellir keys update <key-id> --name \"My Key\"",
+			len(args),
+		)
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := newAPIClient()
 		if err != nil {
