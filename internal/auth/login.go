@@ -40,36 +40,7 @@ func Login(configDir string, profileName string, dashboardURL string) (*config.P
 	resultCh := make(chan *CallbackPayload, 1)
 	errCh := make(chan error, 1)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var payload CallbackPayload
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			http.Error(w, "invalid payload", http.StatusBadRequest)
-			errCh <- fmt.Errorf("invalid callback payload: %w", err)
-			return
-		}
-		w.Header().Set("Access-Control-Allow-Origin", dashboardURL)
-		w.Header().Set("Access-Control-Allow-Methods", "POST")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{"status":"ok"}`)
-		resultCh <- &payload
-	})
-
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions {
-			w.Header().Set("Access-Control-Allow-Origin", dashboardURL)
-			w.Header().Set("Access-Control-Allow-Methods", "POST")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			w.WriteHeader(http.StatusNoContent)
-		}
-	})
-
-	server := &http.Server{Handler: mux}
+	server := &http.Server{Handler: newLoginMux(dashboardURL, resultCh, errCh)}
 	go func() {
 		if err := server.Serve(listener); err != http.ErrServerClosed {
 			errCh <- err
@@ -116,6 +87,40 @@ func openBrowser(url string) {
 		cmd = exec.Command("xdg-open", url)
 	}
 	_ = cmd.Start()
+}
+
+func newLoginMux(dashboardURL string, resultCh chan<- *CallbackPayload, errCh chan<- error) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+		setCallbackCORSHeaders(w, dashboardURL)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var payload CallbackPayload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "invalid payload", http.StatusBadRequest)
+			errCh <- fmt.Errorf("invalid callback payload: %w", err)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"status":"ok"}`)
+		resultCh <- &payload
+	})
+
+	return mux
+}
+
+func setCallbackCORSHeaders(w http.ResponseWriter, dashboardURL string) {
+	w.Header().Set("Access-Control-Allow-Origin", dashboardURL)
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 }
 
 func machineHostname() string {
