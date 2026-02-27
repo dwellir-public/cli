@@ -5,15 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/glamour"
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/jedib0t/go-pretty/v6/text"
-	"golang.org/x/term"
 
 	"github.com/dwellir-public/cli/internal/api"
 )
@@ -311,17 +307,8 @@ func (f *HumanFormatter) writeEndpoints(data interface{}) error {
 		return f.Write(data)
 	}
 
-	endpointWidth := endpointColumnWidth(detectTerminalWidth(f.w))
 	tw := table.NewWriter()
 	tw.AppendHeader(table.Row{"Chain", "Ecosystem", "Network", "Node Type", "Protocol", "Endpoint"})
-	tw.SetColumnConfigs([]table.ColumnConfig{
-		{Number: 1, WidthMax: 10, WidthMaxEnforcer: text.WrapText},
-		{Number: 2, WidthMax: 8, WidthMaxEnforcer: text.WrapText},
-		{Number: 3, WidthMax: 12, WidthMaxEnforcer: text.WrapText},
-		{Number: 4, WidthMax: 8, WidthMaxEnforcer: text.WrapText},
-		{Number: 5, WidthMax: 8, WidthMaxEnforcer: text.WrapText},
-		{Number: 6, WidthMax: endpointWidth, WidthMaxEnforcer: text.WrapHard},
-	})
 	count := 0
 
 	for _, chain := range chains {
@@ -358,45 +345,6 @@ func (f *HumanFormatter) writeEndpoints(data interface{}) error {
 		return err
 	}
 	return f.renderTable(tw)
-}
-
-func detectTerminalWidth(w io.Writer) int {
-	if file, ok := w.(*os.File); ok {
-		fd := int(file.Fd())
-		if term.IsTerminal(fd) {
-			if width, _, err := term.GetSize(fd); err == nil && width > 0 {
-				return width
-			}
-		}
-	}
-
-	if raw := strings.TrimSpace(os.Getenv("COLUMNS")); raw != "" {
-		if width, err := strconv.Atoi(raw); err == nil && width > 0 {
-			return width
-		}
-	}
-	return 0
-}
-
-func endpointColumnWidth(terminalWidth int) int {
-	const (
-		defaultWidth = 48
-		minWidth     = 18
-		maxWidth     = 64
-		fixedWidth   = 62
-	)
-
-	if terminalWidth <= 0 {
-		return defaultWidth
-	}
-	width := terminalWidth - fixedWidth
-	if width < minWidth {
-		return minWidth
-	}
-	if width > maxWidth {
-		return maxWidth
-	}
-	return width
 }
 
 func (f *HumanFormatter) writeAccountInfo(data interface{}) error {
@@ -526,7 +474,10 @@ func (f *HumanFormatter) renderMarkdown(content string) (string, error) {
 }
 
 func (f *HumanFormatter) renderTable(tw table.Writer) error {
-	tw.SetStyle(table.StyleLight)
+	style := table.StyleLight
+	style.Options = table.OptionsNoBordersAndSeparators
+	tw.SetStyle(style)
+	tw.SuppressTrailingSpaces()
 	out := tw.Render()
 	if !strings.HasSuffix(out, "\n") {
 		out += "\n"
