@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/glamour"
@@ -27,6 +28,7 @@ type endpointTableRow struct {
 	ecosystem string
 	network   string
 	nodeType  string
+	premium   string
 	protocol  string
 	endpoint  string
 }
@@ -412,7 +414,7 @@ func (f *HumanFormatter) writeEndpoints(data interface{}) error {
 
 	rows := make([]endpointTableRow, 0)
 	tw := table.NewWriter()
-	tw.AppendHeader(table.Row{"Chain", "Ecosystem", "Network", "Node Type", "Protocol", "Endpoint"})
+	tw.AppendHeader(table.Row{"Chain", "Ecosystem", "Network", "Node Type", "Premium", "Protocol", "Endpoint"})
 
 	for _, chain := range chains {
 		for _, network := range chain.Networks {
@@ -423,6 +425,7 @@ func (f *HumanFormatter) writeEndpoints(data interface{}) error {
 						ecosystem: chain.Ecosystem,
 						network:   network.Name,
 						nodeType:  node.NodeType.Name,
+						premium:   formatPremiumLabel(node),
 						protocol:  "https",
 						endpoint:  node.HTTPS,
 					})
@@ -433,6 +436,7 @@ func (f *HumanFormatter) writeEndpoints(data interface{}) error {
 						ecosystem: chain.Ecosystem,
 						network:   network.Name,
 						nodeType:  node.NodeType.Name,
+						premium:   formatPremiumLabel(node),
 						protocol:  "wss",
 						endpoint:  node.WSS,
 					})
@@ -456,6 +460,7 @@ func (f *HumanFormatter) writeEndpoints(data interface{}) error {
 			row.ecosystem,
 			row.network,
 			row.nodeType,
+			row.premium,
 			row.protocol,
 			row.endpoint,
 		}))
@@ -669,11 +674,12 @@ func (f *HumanFormatter) writeEndpointsCompact(rows []endpointTableRow, width in
 	for _, row := range rows {
 		if _, err := fmt.Fprintf(
 			f.w,
-			"%s · %s · %s · %s · %s\n  %s\n",
+			"%s · %s · %s · %s · %s · %s\n  %s\n",
 			truncateWithEllipsis(row.chain, 22),
 			truncateWithEllipsis(row.ecosystem, 12),
 			truncateWithEllipsis(row.network, 24),
 			truncateWithEllipsis(row.nodeType, 12),
+			truncateWithEllipsis(row.premium, 24),
 			row.protocol,
 			row.endpoint,
 		); err != nil {
@@ -681,6 +687,32 @@ func (f *HumanFormatter) writeEndpointsCompact(rows []endpointTableRow, width in
 		}
 	}
 	return nil
+}
+
+func formatPremiumLabel(node api.Node) string {
+	if !node.Premium {
+		return "standard"
+	}
+
+	status := strings.TrimSpace(strings.ToLower(node.PremiumStatus))
+	switch status {
+	case "trial-active":
+		if node.TrialEndsAt == "" {
+			return "premium (trial active)"
+		}
+		if ts, err := time.Parse(time.RFC3339, node.TrialEndsAt); err == nil {
+			return fmt.Sprintf("premium (trial until %s)", ts.UTC().Format("2006-01-02"))
+		}
+		return fmt.Sprintf("premium (trial until %s)", node.TrialEndsAt)
+	case "trial-expired":
+		return "premium (trial expired)"
+	case "addon-active":
+		return "premium (active)"
+	case "locked":
+		return "premium (locked)"
+	default:
+		return "premium"
+	}
 }
 
 func terminalWidthFromWriter(w io.Writer) int {
