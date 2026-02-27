@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -86,9 +87,13 @@ func buildFormatter(format string) output.Formatter {
 }
 
 func resolvedOutputFormat() string {
-	cfg, _ := config.Load(config.DefaultConfigDir())
-	format := cfg.Output
-	if isAgentEnvironment() {
+	configDir := config.DefaultConfigDir()
+	format := "human"
+	cfg, err := config.Load(configDir)
+	if err == nil && cfg != nil && cfg.Output != "" {
+		format = cfg.Output
+	}
+	if isAgentEnvironment() && !configFileExists(configDir) {
 		format = "json"
 	}
 	if jsonOutput {
@@ -126,4 +131,9 @@ func isAgentEnvironment() bool {
 		}
 	}
 	return false
+}
+
+func configFileExists(configDir string) bool {
+	_, err := os.Stat(filepath.Join(configDir, "config.json"))
+	return err == nil
 }

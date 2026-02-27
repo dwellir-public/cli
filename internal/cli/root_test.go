@@ -69,6 +69,21 @@ func TestResolvedOutputFormat_TOONFlagOverridesDefaults(t *testing.T) {
 	}
 }
 
+func TestResolvedOutputFormat_ConfigOverridesAgentDefaultWhenConfigExists(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DWELLIR_CONFIG_DIR", dir)
+	resetOutputFlagsForTest(t)
+	clearAgentMarkers(t)
+	t.Setenv("CODEX_CI", "1")
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"output":"human","default_profile":"default"}`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if got := resolvedOutputFormat(); got != "human" {
+		t.Fatalf("resolvedOutputFormat() = %q, want %q", got, "human")
+	}
+}
+
 func TestExplicitOutputFromArgs(t *testing.T) {
 	tests := []struct {
 		name string
