@@ -192,3 +192,63 @@ func TestParsePacmanOwnedPackage(t *testing.T) {
 		})
 	}
 }
+
+func TestDetectManagedInstallHintWith_PacmanIncludesMigrationInstructions(t *testing.T) {
+	got := detectManagedInstallHintWith(
+		"/usr/bin/dwellir",
+		func(bin string) (string, error) {
+			if bin == "pacman" {
+				return "/usr/bin/pacman", nil
+			}
+			return "", errors.New("not found")
+		},
+		func(name string, args ...string) (string, error) {
+			if name == "pacman" && len(args) == 2 && args[0] == "-Qo" && args[1] == "/usr/bin/dwellir" {
+				return "/usr/bin/dwellir is owned by dwellir-cli-bin 0.1.16-1\n", nil
+			}
+			return "", errors.New("unexpected command")
+		},
+	)
+
+	required := []string{
+		"yay -Syu dwellir-cli-bin",
+		"yay -Rns dwellir-cli-bin",
+		"curl -fsSL https://raw.githubusercontent.com/dwellir-public/cli/main/scripts/install.sh | sh",
+		"automatic background updates are not currently built-in",
+	}
+	for _, needle := range required {
+		if !strings.Contains(got, needle) {
+			t.Fatalf("expected hint to contain %q, got %q", needle, got)
+		}
+	}
+}
+
+func TestDetectManagedInstallHintWith_BrewIncludesMigrationInstructions(t *testing.T) {
+	got := detectManagedInstallHintWith(
+		"/opt/homebrew/bin/dwellir",
+		func(bin string) (string, error) {
+			if bin == "brew" {
+				return "/opt/homebrew/bin/brew", nil
+			}
+			return "", errors.New("not found")
+		},
+		func(name string, args ...string) (string, error) {
+			if name == "brew" && len(args) == 3 && args[0] == "list" && args[1] == "--formula" && args[2] == "dwellir" {
+				return "dwellir\n", nil
+			}
+			return "", errors.New("unexpected command")
+		},
+	)
+
+	required := []string{
+		"brew upgrade dwellir",
+		"brew uninstall dwellir",
+		"curl -fsSL https://raw.githubusercontent.com/dwellir-public/cli/main/scripts/install.sh | sh",
+		"automatic background updates are not currently built-in",
+	}
+	for _, needle := range required {
+		if !strings.Contains(got, needle) {
+			t.Fatalf("expected hint to contain %q, got %q", needle, got)
+		}
+	}
+}
