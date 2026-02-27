@@ -86,6 +86,30 @@ func TestHumanUsageSummary(t *testing.T) {
 	}
 }
 
+func TestHumanUsageSummaryFormatsLargeNumbers(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewHumanFormatter(&buf)
+
+	err := f.Success("usage.summary", &api.UsageSummary{
+		TotalRequests:  185143770,
+		TotalResponses: 35223132,
+		RateLimited:    193949495,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := buf.String()
+	if !strings.Contains(got, "185,143,770") {
+		t.Fatalf("expected formatted total requests with commas, got:\n%s", got)
+	}
+	if !strings.Contains(got, "35,223,132") {
+		t.Fatalf("expected formatted total responses with commas, got:\n%s", got)
+	}
+	if !strings.Contains(got, "193,949,495") {
+		t.Fatalf("expected formatted rate limited with commas, got:\n%s", got)
+	}
+}
+
 func TestHumanWriteMapDoesNotShowGenericHeaders(t *testing.T) {
 	var buf bytes.Buffer
 	f := NewHumanFormatter(&buf)

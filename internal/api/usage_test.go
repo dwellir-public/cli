@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestUsageHistoryRequestShape(t *testing.T) {
@@ -122,5 +123,47 @@ func TestUsageRPSBuildsTimeSeriesFromHistory(t *testing.T) {
 	}
 	if items[0].RPS != 3 {
 		t.Fatalf("expected rps=3, got %v", items[0].RPS)
+	}
+}
+
+func TestUsageOrganizationRPSMapsLimitedRequestsCamelCase(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v4/organization/analytics/rps" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"rps":             7,
+			"peakRps":         31,
+			"limitedRequests": 193949495.0,
+		})
+	}))
+	defer server.Close()
+
+	api := NewUsageAPI(NewClient(server.URL, "token"))
+	agg, err := api.OrganizationRPS("day", "2026-01-28T00:00:00Z", "2026-02-28T00:00:00Z", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if agg.LimitedRequests != 193949495 {
+		t.Fatalf("expected limited requests 193949495, got %.2f", agg.LimitedRequests)
+	}
+	if agg.PeakRPS != 31 {
+		t.Fatalf("expected peak rps 31, got %v", agg.PeakRPS)
+	}
+}
+
+func TestCurrentBillingCycleRange_UsesSubscriptionWindow(t *testing.T) {
+	now := time.Date(2026, 2, 27, 12, 0, 0, 0, time.UTC)
+	window := &CurrentSubscriptionWindow{
+		StartDate:   "2026-01-28T12:19:00Z",
+		RenewalDate: "2026-02-28T12:19:00Z",
+	}
+	start, end := CurrentBillingCycleRange(now, window)
+
+	if got, want := start.Format(time.RFC3339), "2026-01-28T00:00:00Z"; got != want {
+		t.Fatalf("start=%s want=%s", got, want)
+	}
+	if got, want := end.Format(time.RFC3339), "2026-02-28T00:00:00Z"; got != want {
+		t.Fatalf("end=%s want=%s", got, want)
 	}
 }
