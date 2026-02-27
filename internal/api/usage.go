@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"time"
 )
 
 type UsageSummary struct {
@@ -12,6 +13,22 @@ type UsageSummary struct {
 	RateLimited    int    `json:"rate_limited"`
 	BillingStart   string `json:"billing_start,omitempty"`
 	BillingEnd     string `json:"billing_end,omitempty"`
+}
+
+func (u *UsageSummary) UnmarshalJSON(data []byte) error {
+	type alias UsageSummary
+	var raw struct {
+		alias
+		RateLimitedCamel int `json:"rateLimited"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*u = UsageSummary(raw.alias)
+	if u.RateLimited == 0 {
+		u.RateLimited = raw.RateLimitedCamel
+	}
+	return nil
 }
 
 type UsageHistory struct {
@@ -43,6 +60,32 @@ func (u *UsageHistory) UnmarshalJSON(data []byte) error {
 type RPSData struct {
 	Timestamp string  `json:"timestamp"`
 	RPS       float64 `json:"rps"`
+}
+
+type OrganizationRPS struct {
+	RPS             float64 `json:"rps"`
+	PeakRPS         float64 `json:"peak_rps"`
+	LimitedRequests float64 `json:"limited_requests"`
+}
+
+func (r *OrganizationRPS) UnmarshalJSON(data []byte) error {
+	type alias OrganizationRPS
+	var raw struct {
+		alias
+		PeakRPSCamel         float64 `json:"peakRps"`
+		LimitedRequestsCamel float64 `json:"limitedRequests"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*r = OrganizationRPS(raw.alias)
+	if r.PeakRPS == 0 {
+		r.PeakRPS = raw.PeakRPSCamel
+	}
+	if r.LimitedRequests == 0 {
+		r.LimitedRequests = raw.LimitedRequestsCamel
+	}
+	return nil
 }
 
 type UsageBreakdown struct {
@@ -216,6 +259,34 @@ func (u *UsageAPI) RPS(interval string, from string, to string, apiKey string, f
 	return BuildRPSTimeSeries(history, interval), nil
 }
 
+func (u *UsageAPI) OrganizationRPS(interval string, from string, to string, apiKey string, fqdn string) (*OrganizationRPS, error) {
+	body := analyticsRequest{
+		Interval: interval,
+	}
+	if from != "" {
+		body.StartTime = from
+	}
+	if to != "" {
+		body.EndTime = to
+	}
+	filter := &analyticsFilter{}
+	if trimmed := strings.TrimSpace(apiKey); trimmed != "" {
+		filter.APIKeys = []string{trimmed}
+	}
+	if trimmed := strings.TrimSpace(fqdn); trimmed != "" {
+		filter.Domains = []string{trimmed}
+	}
+	if len(filter.APIKeys) > 0 || len(filter.Domains) > 0 {
+		body.Filter = filter
+	}
+
+	var stats OrganizationRPS
+	if err := u.client.Post("/v4/organization/analytics/rps", body, &stats); err != nil {
+		return nil, err
+	}
+	return &stats, nil
+}
+
 func UsageDomain(row UsageHistory) string {
 	return row.Domain
 }
@@ -269,4 +340,54 @@ func (u *UsageAPI) TimeBreakdown(interval string, from string, to string, apiKey
 
 func (u *UsageAPI) RawHistory(interval string, from string, to string, apiKey string, fqdn string, method string) ([]UsageHistory, error) {
 	return u.History(interval, from, to, apiKey, fqdn, method)
+}
+
+func CurrentBillingCycleRange(now time.Time, currentSub *CurrentSubscriptionWindow) (time.Time, time.Time) {
+	start, _ := currentBillingCycleWindow(now, currentSub)
+	return startOfUTCDay(start), startOfUTCDay(now.AddDate(0, 0, 1))
+}
+
+func currentBillingCycleWindow(now time.Time, currentSub *CurrentSubscriptionWindow) (time.Time, time.Time) {
+	if currentSub != nil {
+		if renewal := parseUsageDate(currentSub.GetRenewalDate()); renewal != nil {
+			return usageCycleWindowFromAnchor(now, *renewal)
+		}
+		if start := parseUsageDate(currentSub.GetStartDate()); start != nil && !start.After(now) {
+			return usageCycleWindowFromAnchor(now, *start)
+		}
+	}
+	start := time.Date(now.UTC().Year(), now.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
+	return start, start.AddDate(0, 1, 0)
+}
+
+func usageCycleWindowFromAnchor(now time.Time, anchorInput time.Time) (time.Time, time.Time) {
+	anchor := anchorInput.UTC()
+	now = now.UTC()
+	for !anchor.After(now) {
+		anchor = anchor.AddDate(0, 1, 0)
+	}
+	start := anchor.AddDate(0, -1, 0)
+	for now.Before(start) {
+		anchor = anchor.AddDate(0, -1, 0)
+		start = anchor.AddDate(0, -1, 0)
+	}
+	return start, anchor
+}
+
+func parseUsageDate(raw string) *time.Time {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339, trimmed)
+	if err != nil {
+		return nil
+	}
+	utc := t.UTC()
+	return &utc
+}
+
+func startOfUTCDay(t time.Time) time.Time {
+	u := t.UTC()
+	return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC)
 }

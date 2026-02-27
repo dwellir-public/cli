@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -121,7 +122,7 @@ func (f *HumanFormatter) writeKeysList(data interface{}) error {
 	tw := table.NewWriter()
 	tw.AppendHeader(table.Row{"API Key", "Name", "Enabled", "Daily Quota", "Monthly Quota", "Created At", "Updated At"})
 	for _, key := range keys {
-		tw.AppendRow(table.Row{
+		tw.AppendRow(f.formatTableRow(table.Row{
 			key.APIKey,
 			key.Name,
 			yesNo(key.Enabled),
@@ -129,7 +130,7 @@ func (f *HumanFormatter) writeKeysList(data interface{}) error {
 			formatQuota(key.MonthlyQuota),
 			key.CreatedAt,
 			key.UpdatedAt,
-		})
+		}))
 	}
 	return f.renderTable(tw)
 }
@@ -210,7 +211,7 @@ func (f *HumanFormatter) writeUsageHistory(data interface{}) error {
 	tw := table.NewWriter()
 	tw.AppendHeader(table.Row{"Timestamp", "Requests", "Responses"})
 	for _, h := range history {
-		tw.AppendRow(table.Row{h.Timestamp, h.Requests, h.Responses})
+		tw.AppendRow(f.formatTableRow(table.Row{h.Timestamp, h.Requests, h.Responses}))
 	}
 	return f.renderTable(tw)
 }
@@ -227,7 +228,7 @@ func (f *HumanFormatter) writeUsageRPS(data interface{}) error {
 	tw := table.NewWriter()
 	tw.AppendHeader(table.Row{"Timestamp", "RPS"})
 	for _, point := range points {
-		tw.AppendRow(table.Row{point.Timestamp, fmt.Sprintf("%.2f", point.RPS)})
+		tw.AppendRow(f.formatTableRow(table.Row{point.Timestamp, fmt.Sprintf("%.2f", point.RPS)}))
 	}
 	return f.renderTable(tw)
 }
@@ -244,7 +245,7 @@ func (f *HumanFormatter) writeUsageBreakdown(data interface{}) error {
 	tw := table.NewWriter()
 	tw.AppendHeader(table.Row{"Group", "Requests", "Responses", "Rate Limited"})
 	for _, row := range breakdown {
-		tw.AppendRow(table.Row{row.Group, row.Requests, row.Responses, row.RateLimited})
+		tw.AppendRow(f.formatTableRow(table.Row{row.Group, row.Requests, row.Responses, row.RateLimited}))
 	}
 	return f.renderTable(tw)
 }
@@ -287,7 +288,7 @@ func (f *HumanFormatter) writeUsageCosts(data interface{}) error {
 		tw := table.NewWriter()
 		tw.AppendHeader(table.Row{"Domain", "Responses", "Cost (USD)"})
 		for _, row := range report.ByDomain {
-			tw.AppendRow(table.Row{row.Group, row.Responses, fmt.Sprintf("$%.2f", row.Cost)})
+			tw.AppendRow(f.formatTableRow(table.Row{row.Group, row.Responses, fmt.Sprintf("$%.2f", row.Cost)}))
 		}
 		if err := f.renderTable(tw); err != nil {
 			return err
@@ -301,13 +302,13 @@ func (f *HumanFormatter) writeUsageCosts(data interface{}) error {
 		tw := table.NewWriter()
 		tw.AppendHeader(table.Row{"Segment Start", "Segment End", "Responses", "Cost (USD)", "Type"})
 		for _, segment := range report.Segments {
-			tw.AppendRow(table.Row{
+			tw.AppendRow(f.formatTableRow(table.Row{
 				segment.Start,
 				segment.End,
 				segment.Responses,
 				fmt.Sprintf("$%.2f", segment.Cost),
 				segment.CostType,
-			})
+			}))
 		}
 		return f.renderTable(tw)
 	}
@@ -327,13 +328,13 @@ func (f *HumanFormatter) writeLogsErrors(data interface{}) error {
 	tw := table.NewWriter()
 	tw.AppendHeader(table.Row{"Timestamp", "Status", "RPC Methods", "Endpoint", "Message"})
 	for _, row := range logs {
-		tw.AppendRow(table.Row{
+		tw.AppendRow(f.formatTableRow(table.Row{
 			row.Timestamp,
 			fmt.Sprintf("%d %s", row.StatusCode, row.StatusLabel),
 			row.RPCMethods,
 			row.FQDN,
 			row.ErrorMessage,
-		})
+		}))
 	}
 	return f.renderTable(tw)
 }
@@ -350,7 +351,7 @@ func (f *HumanFormatter) writeLogsStats(data interface{}) error {
 	tw := table.NewWriter()
 	tw.AppendHeader(table.Row{"Status Code", "Count"})
 	for _, row := range stats {
-		tw.AppendRow(table.Row{row.StatusCode, row.Count})
+		tw.AppendRow(f.formatTableRow(table.Row{row.StatusCode, row.Count}))
 	}
 	return f.renderTable(tw)
 }
@@ -389,7 +390,7 @@ func (f *HumanFormatter) writeLogsFacets(data interface{}) error {
 		tw := table.NewWriter()
 		tw.AppendHeader(table.Row{"Value", "Count"})
 		for _, row := range section.entries {
-			tw.AppendRow(table.Row{row.Value, row.Count})
+			tw.AppendRow(f.formatTableRow(table.Row{row.Value, row.Count}))
 		}
 		if err := f.renderTable(tw); err != nil {
 			return err
@@ -450,14 +451,14 @@ func (f *HumanFormatter) writeEndpoints(data interface{}) error {
 	}
 
 	for _, row := range rows {
-		tw.AppendRow(table.Row{
+		tw.AppendRow(f.formatTableRow(table.Row{
 			row.chain,
 			row.ecosystem,
 			row.network,
 			row.nodeType,
 			row.protocol,
 			row.endpoint,
-		})
+		}))
 	}
 
 	return f.renderTable(tw)
@@ -559,7 +560,7 @@ func (f *HumanFormatter) writeDocsEntries(data interface{}) error {
 	tw := table.NewWriter()
 	tw.AppendHeader(table.Row{"Title", "Slug", "Section", "Description"})
 	for _, entry := range entries {
-		tw.AppendRow(table.Row{entry.Title, entry.Slug, entry.Section, entry.Description})
+		tw.AppendRow(f.formatTableRow(table.Row{entry.Title, entry.Slug, entry.Section, entry.Description}))
 	}
 	return f.renderTable(tw)
 }
@@ -633,7 +634,7 @@ func (f *HumanFormatter) renderKeyValueRows(rows [][2]string) error {
 	}
 	tw := table.NewWriter()
 	for _, row := range rows {
-		tw.AppendRow(table.Row{row[0], row[1]})
+		tw.AppendRow(f.formatTableRow(table.Row{row[0], row[1]}))
 	}
 	return f.renderTable(tw)
 }
@@ -642,7 +643,7 @@ func formatQuota(v *int) string {
 	if v == nil {
 		return "Unlimited"
 	}
-	return fmt.Sprintf("%d", *v)
+	return formatInt64(int64(*v))
 }
 
 func yesNo(v bool) string {
@@ -706,4 +707,85 @@ func truncateWithEllipsis(value string, limit int) string {
 	}
 	runes := []rune(value)
 	return string(runes[:limit-1]) + "…"
+}
+
+func (f *HumanFormatter) formatTableRow(row table.Row) table.Row {
+	formatted := make(table.Row, 0, len(row))
+	for _, cell := range row {
+		formatted = append(formatted, formatHumanValue(cell))
+	}
+	return formatted
+}
+
+func formatHumanValue(v interface{}) interface{} {
+	switch t := v.(type) {
+	case int:
+		return formatInt64(int64(t))
+	case int8:
+		return formatInt64(int64(t))
+	case int16:
+		return formatInt64(int64(t))
+	case int32:
+		return formatInt64(int64(t))
+	case int64:
+		return formatInt64(t)
+	case uint:
+		return formatUint64(uint64(t))
+	case uint8:
+		return formatUint64(uint64(t))
+	case uint16:
+		return formatUint64(uint64(t))
+	case uint32:
+		return formatUint64(uint64(t))
+	case uint64:
+		return formatUint64(t)
+	case string:
+		return formatNumericString(t)
+	default:
+		return v
+	}
+}
+
+func formatNumericString(raw string) string {
+	if raw == "" {
+		return raw
+	}
+	if raw[0] == '-' {
+		if _, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			return "-" + formatUintString(strings.TrimPrefix(raw, "-"))
+		}
+		return raw
+	}
+	if _, err := strconv.ParseUint(raw, 10, 64); err == nil {
+		return formatUintString(raw)
+	}
+	return raw
+}
+
+func formatInt64(v int64) string {
+	raw := strconv.FormatInt(v, 10)
+	if strings.HasPrefix(raw, "-") {
+		return "-" + formatUintString(strings.TrimPrefix(raw, "-"))
+	}
+	return formatUintString(raw)
+}
+
+func formatUint64(v uint64) string {
+	return formatUintString(strconv.FormatUint(v, 10))
+}
+
+func formatUintString(raw string) string {
+	if len(raw) <= 3 {
+		return raw
+	}
+	parts := make([]string, 0, (len(raw)+2)/3)
+	for len(raw) > 3 {
+		parts = append(parts, raw[len(raw)-3:])
+		raw = raw[:len(raw)-3]
+	}
+	parts = append(parts, raw)
+	for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
+		parts[i], parts[j] = parts[j], parts[i]
+	}
+	return strings.Join(parts, ",")
 }

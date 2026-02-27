@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -31,9 +32,23 @@ var usageSummaryCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
-		summary, err := api.NewUsageAPI(client).Summary()
+		usageAPI := api.NewUsageAPI(client)
+		summary, err := usageAPI.Summary()
 		if err != nil {
 			return formatCommandError(err)
+		}
+
+		// Frontend uses organization RPS analytics for limitedRequests.
+		// Keep summary aligned by pulling the same source over the current billing cycle.
+		if accountInfo, infoErr := api.NewAccountAPI(client).Info(); infoErr == nil && summary != nil {
+			start, end := api.CurrentBillingCycleRange(time.Now().UTC(), accountInfo.CurrentSubscription)
+			startStr := start.Format(time.RFC3339)
+			endStr := end.Format(time.RFC3339)
+			if stats, statsErr := usageAPI.OrganizationRPS("day", startStr, endStr, "", ""); statsErr == nil && stats != nil {
+				summary.RateLimited = int(math.Round(stats.LimitedRequests))
+			}
+			summary.BillingStart = startStr
+			summary.BillingEnd = endStr
 		}
 		return getFormatter().Success("usage.summary", summary)
 	},
