@@ -29,7 +29,7 @@ var endpointsCmd = &cobra.Command{
 	Long: `Browse and search blockchain endpoints.
 
 Use filter flags with any subcommand:
-  --ecosystem  Filter by ecosystem (evm, substrate, cosmos, move)
+  --ecosystem  Filter by ecosystem (evm, substrate, cosmos, move, hyperliquid, other)
   --node-type  Filter by node type (full, archive)
   --protocol   Filter by protocol (https, wss)
   --network    Filter by network (mainnet, testnet, or network name)
@@ -133,7 +133,7 @@ var endpointsGetCmd = &cobra.Command{
 }
 
 func init() {
-	endpointsCmd.PersistentFlags().StringVar(&epEcosystem, "ecosystem", "", "Filter by ecosystem (evm, substrate, cosmos, move)")
+	endpointsCmd.PersistentFlags().StringVar(&epEcosystem, "ecosystem", "", "Filter by ecosystem (evm, substrate, cosmos, move, hyperliquid, other)")
 	endpointsCmd.PersistentFlags().StringVar(&epNodeType, "node-type", "", "Filter by node type (full, archive)")
 	endpointsCmd.PersistentFlags().StringVar(&epProtocol, "protocol", "", "Filter by protocol (https, wss)")
 	endpointsCmd.PersistentFlags().StringVar(&epNetwork, "network", "", "Filter by network (mainnet, testnet, or network name)")

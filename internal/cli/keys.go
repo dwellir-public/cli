@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -38,12 +39,29 @@ var keysListCmd = &cobra.Command{
 var keysCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new API key",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) > 0 {
+			return getFormatter().Error(
+				"validation_error",
+				fmt.Sprintf("Unexpected arguments for keys create (got %d).", len(args)),
+				"Example: dwellir keys create --name \"CI key\"",
+			)
+		}
+		if !cmd.Flags().Changed("name") || strings.TrimSpace(keyName) == "" {
+			return getFormatter().Error(
+				"validation_error",
+				"Missing required flag --name.",
+				"Example: dwellir keys create --name \"CI key\"",
+			)
+		}
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := newAPIClient()
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
-		input := api.CreateKeyInput{Name: keyName}
+		input := api.CreateKeyInput{Name: strings.TrimSpace(keyName)}
 		if keyDailyQuota > 0 {
 			input.DailyQuota = &keyDailyQuota
 		}
@@ -150,7 +168,7 @@ var keysDisableCmd = &cobra.Command{
 }
 
 func init() {
-	keysCreateCmd.Flags().StringVar(&keyName, "name", "", "Key name")
+	keysCreateCmd.Flags().StringVar(&keyName, "name", "", "Key name (required)")
 	keysCreateCmd.Flags().IntVar(&keyDailyQuota, "daily-quota", 0, "Daily request quota")
 	keysCreateCmd.Flags().IntVar(&keyMonthlyQuota, "monthly-quota", 0, "Monthly request quota")
 
