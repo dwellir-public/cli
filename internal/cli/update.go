@@ -13,6 +13,7 @@ import (
 )
 
 const repoSlug = "dwellir-public/cli"
+const nativeInstallScriptCmd = "curl -fsSL https://raw.githubusercontent.com/dwellir-public/cli/main/scripts/install.sh | sh"
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
@@ -117,20 +118,15 @@ func detectManagedInstallHintWith(
 	if _, err := lookPath("pacman"); err == nil && path != "" {
 		if out, runErr := runCmd("pacman", "-Qo", path); runErr == nil {
 			if pkg := parsePacmanOwnedPackage(out); pkg != "" {
-				return fmt.Sprintf(
-					"This installation is managed by pacman/AUR (%s). Run `yay -Syu %s` (or `sudo pacman -Syu %s`).",
-					pkg,
-					pkg,
-					pkg,
-				)
+				return pacmanManagedInstallHint(pkg)
 			}
-			return "This installation is managed by pacman/AUR. Run `yay -Syu dwellir-cli-bin` (or `sudo pacman -Syu dwellir-cli-bin`)."
+			return pacmanManagedInstallHint("dwellir-cli-bin")
 		}
 	}
 
 	if _, err := lookPath("brew"); err == nil {
 		if _, runErr := runCmd("brew", "list", "--formula", "dwellir"); runErr == nil {
-			return "This installation is managed by Homebrew. Run `brew upgrade dwellir`."
+			return homebrewManagedInstallHint()
 		}
 	}
 
@@ -154,4 +150,31 @@ func parsePacmanOwnedPackage(output string) string {
 func runCommandOutput(name string, args ...string) (string, error) {
 	out, err := exec.Command(name, args...).CombinedOutput()
 	return string(out), err
+}
+
+func pacmanManagedInstallHint(pkg string) string {
+	return fmt.Sprintf(
+		"This installation is managed by pacman/AUR (%s). Run `yay -Syu %s` (or `sudo pacman -Syu %s`).\n\n"+
+			"To use `dwellir update` (self-update), switch to the native install:\n"+
+			"1. Uninstall package-manager build: `yay -Rns %s` (or `sudo pacman -Rns %s`)\n"+
+			"2. Install native release build: `%s`\n\n"+
+			"Note: automatic background updates are not currently built-in; run `dwellir update` when needed.",
+		pkg,
+		pkg,
+		pkg,
+		pkg,
+		pkg,
+		nativeInstallScriptCmd,
+	)
+}
+
+func homebrewManagedInstallHint() string {
+	return fmt.Sprintf(
+		"This installation is managed by Homebrew. Run `brew upgrade dwellir`.\n\n"+
+			"To use `dwellir update` (self-update), switch to the native install:\n"+
+			"1. Uninstall Homebrew formula: `brew uninstall dwellir`\n"+
+			"2. Install native release build: `%s`\n\n"+
+			"Note: automatic background updates are not currently built-in; run `dwellir update` when needed.",
+		nativeInstallScriptCmd,
+	)
 }
