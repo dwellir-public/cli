@@ -12,6 +12,7 @@ import (
 var (
 	jsonOutput    bool
 	humanOutput   bool
+	toonOutput    bool
 	profile       string
 	quiet         bool
 	anonTelemetry bool
@@ -40,6 +41,7 @@ Dashboard:     https://dashboard.dwellir.com`,
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
 	rootCmd.PersistentFlags().BoolVar(&humanOutput, "human", false, "Output as human-readable (default)")
+	rootCmd.PersistentFlags().BoolVar(&toonOutput, "toon", false, "Output as TOON (experimental)")
 	rootCmd.PersistentFlags().StringVar(&profile, "profile", "", "Use a specific auth profile")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&anonTelemetry, "anon-telemetry", false, "Anonymize telemetry data")
@@ -53,24 +55,30 @@ func Execute() error {
 		}
 		code, message, help := classifyExecutionError(err)
 		f := getFormatter()
-		if isJSONRequested(os.Args[1:]) {
-			f = output.New("json", rootCmd.OutOrStdout())
+		if explicit := explicitOutputFromArgs(os.Args[1:]); explicit != "" {
+			f = output.New(explicit, rootCmd.OutOrStdout())
 		}
 		return f.Error(code, message, help)
 	}
 	return nil
 }
 
-func isJSONRequested(args []string) bool {
+func explicitOutputFromArgs(args []string) string {
 	if len(args) == 0 {
-		return false
+		return ""
 	}
+	format := ""
 	for _, arg := range args {
-		if arg == "--json" {
-			return true
+		switch arg {
+		case "--json":
+			format = "json"
+		case "--human":
+			format = "human"
+		case "--toon":
+			format = "toon"
 		}
 	}
-	return false
+	return format
 }
 
 func buildFormatter(format string) output.Formatter {
@@ -89,11 +97,14 @@ func resolvedOutputFormat() string {
 	if humanOutput {
 		format = "human"
 	}
+	if toonOutput {
+		format = "toon"
+	}
 	return format
 }
 
 func isHumanOutput() bool {
-	return resolvedOutputFormat() != "json"
+	return resolvedOutputFormat() == "human"
 }
 
 func getFormatter() output.Formatter {

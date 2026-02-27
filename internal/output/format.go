@@ -55,5 +55,8 @@ func New(format string, w io.Writer) Formatter {
 	if format == "json" {
 		return NewJSONFormatter(w)
 	}
+	if format == "toon" {
+		return NewTOONFormatter(w)
+	}
 	return NewHumanFormatter(w)
 }

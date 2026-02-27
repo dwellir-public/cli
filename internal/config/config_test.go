@@ -33,6 +33,17 @@ func TestSetAndGet(t *testing.T) {
 	}
 }
 
+func TestSetOutputTOON(t *testing.T) {
+	dir := t.TempDir()
+	cfg, _ := Load(dir)
+	if err := cfg.Set("output", "toon"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := cfg.Get("output"); got != "toon" {
+		t.Fatalf("expected 'toon', got '%s'", got)
+	}
+}
+
 func TestSaveAndReload(t *testing.T) {
 	dir := t.TempDir()
 	cfg, _ := Load(dir)
