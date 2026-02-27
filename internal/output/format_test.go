@@ -177,32 +177,13 @@ func TestHumanEndpointsUsesProtocolColumn(t *testing.T) {
 	if strings.Contains(got, "HTTPS") || strings.Contains(got, "WSS") {
 		t.Fatalf("expected no dedicated HTTPS/WSS columns, got:\n%s", got)
 	}
+	if strings.Contains(got, "│") || strings.Contains(got, "|") {
+		t.Fatalf("expected no vertical separators in human table output, got:\n%s", got)
+	}
 	if !strings.Contains(got, "https://api-base-mainnet-archive.n.dwellir.com/") {
 		t.Fatalf("expected https endpoint row, got:\n%s", got)
 	}
 	if !strings.Contains(got, "wss://api-base-mainnet-archive.n.dwellir.com/") {
 		t.Fatalf("expected wss endpoint row, got:\n%s", got)
-	}
-}
-
-func TestEndpointColumnWidth(t *testing.T) {
-	tests := []struct {
-		name     string
-		terminal int
-		want     int
-	}{
-		{name: "default when terminal unknown", terminal: 0, want: 48},
-		{name: "minimum width clamp", terminal: 70, want: 18},
-		{name: "dynamic width", terminal: 120, want: 58},
-		{name: "maximum width clamp", terminal: 200, want: 64},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := endpointColumnWidth(tc.terminal)
-			if got != tc.want {
-				t.Fatalf("expected %d, got %d", tc.want, got)
-			}
-		})
 	}
 }
