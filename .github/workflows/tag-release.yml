@@ -106,7 +106,7 @@ jobs:
 
           echo "args=$args" >> "$GITHUB_OUTPUT"
 
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         if: steps.prepare.outputs.release_exists == 'false'
         with:
           version: "~> v2"
