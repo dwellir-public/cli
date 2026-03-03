@@ -112,7 +112,7 @@ func Execute() error {
 	defer telemetryClient.Close()
 
 	if err := rootCmd.Execute(); err != nil {
-		errorCode := "error"
+		var errorCode string
 		var renderedErr *output.RenderedError
 		if errors.As(err, &renderedErr) && renderedErr != nil && renderedErr.Code != "" {
 			errorCode = renderedErr.Code
