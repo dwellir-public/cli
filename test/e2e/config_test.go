@@ -72,15 +72,22 @@ func TestNoConfigStillDefaultsTOONInAgentEnv(t *testing.T) {
 	}
 }
 
-func TestNoConfigDefaultsTOONInNonTTY(t *testing.T) {
-	version := runCLIWithConfigDir(t, t.TempDir(), "version")
+func TestNoConfigDefaultsHumanInNonTTYWithoutAgentMarkers(t *testing.T) {
+	version := runCLIWithConfigDirAndEnv(t, t.TempDir(), map[string]string{
+		"CODEX_CI":               "",
+		"CODEX_THREAD_ID":        "",
+		"CLAUDECODE":             "",
+		"CLAUDE_CODE_ENTRYPOINT": "",
+		"OPENCODE":               "",
+		"CURSOR_AGENT":           "",
+	}, "version")
 	if version.exitCode != 0 {
 		t.Fatalf("version command failed: %s", version.stderr)
 	}
 	if strings.Contains(version.stdout, "{\"ok\":") {
-		t.Fatalf("expected TOON output in non-TTY mode without explicit config, got JSON: %s", version.stdout)
+		t.Fatalf("expected human output in non-TTY mode without agent markers, got JSON: %s", version.stdout)
 	}
-	if !strings.Contains(version.stdout, "ok: true") {
-		t.Fatalf("expected TOON output in non-TTY mode without explicit config, got: %s", version.stdout)
+	if !strings.Contains(version.stdout, "Version") {
+		t.Fatalf("expected human output in non-TTY mode without agent markers, got: %s", version.stdout)
 	}
 }

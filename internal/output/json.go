@@ -38,7 +38,7 @@ func (f *JSONFormatter) Error(code string, message string, help string) error {
 	if err := f.encode(resp); err != nil {
 		return err
 	}
-	return &RenderedError{Message: message}
+	return &RenderedError{Code: code, Message: message}
 }
 
 func (f *JSONFormatter) Write(data interface{}) error {

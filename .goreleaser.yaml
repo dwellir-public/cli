@@ -23,6 +23,7 @@ builds:
       - -X github.com/dwellir-public/cli/internal/cli.Version={{.Version}}
       - -X github.com/dwellir-public/cli/internal/cli.Commit={{.ShortCommit}}
       - -X github.com/dwellir-public/cli/internal/cli.BuildDate={{.Date}}
+      - -X github.com/dwellir-public/cli/internal/telemetry.posthogAPIKey={{.Env.DWELLIR_POSTHOG_KEY}}
 
 archives:
   - formats: [tar.gz]

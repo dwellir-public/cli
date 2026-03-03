@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,26 +17,26 @@ func TestResolvedOutputFormat_DefaultHuman(t *testing.T) {
 	}
 }
 
-func TestResolvedOutputFormat_DefaultsTOONForAgentEnv(t *testing.T) {
+func TestResolvedOutputFormat_DefaultsHumanForAgentEnvWhenStdoutIsTTY(t *testing.T) {
 	t.Setenv("DWELLIR_CONFIG_DIR", t.TempDir())
 	resetOutputFlagsForTest(t)
 	clearAgentMarkers(t)
 	setStdoutTerminalForTest(t, true)
 	t.Setenv("CODEX_CI", "1")
 
-	if got := resolvedOutputFormat(); got != "toon" {
-		t.Fatalf("resolvedOutputFormat() = %q, want %q", got, "toon")
+	if got := resolvedOutputFormat(); got != "human" {
+		t.Fatalf("resolvedOutputFormat() = %q, want %q", got, "human")
 	}
 }
 
-func TestResolvedOutputFormat_DefaultsTOONForNonTerminalStdout(t *testing.T) {
+func TestResolvedOutputFormat_DefaultsHumanForNonTerminalWithoutAgentMarkers(t *testing.T) {
 	t.Setenv("DWELLIR_CONFIG_DIR", t.TempDir())
 	resetOutputFlagsForTest(t)
 	clearAgentMarkers(t)
 	setStdoutTerminalForTest(t, false)
 
-	if got := resolvedOutputFormat(); got != "toon" {
-		t.Fatalf("resolvedOutputFormat() = %q, want %q", got, "toon")
+	if got := resolvedOutputFormat(); got != "human" {
+		t.Fatalf("resolvedOutputFormat() = %q, want %q", got, "human")
 	}
 }
 
@@ -189,5 +190,110 @@ func clearAgentMarkers(t *testing.T) {
 		"CURSOR_AGENT",
 	} {
 		t.Setenv(key, "")
+	}
+}
+
+type telemetryCall struct {
+	command string
+	extra   map[string]interface{}
+}
+
+type fakeTelemetry struct {
+	trackCalls []telemetryCall
+}
+
+func (f *fakeTelemetry) Init(string, string, string, string, bool) {}
+
+func (f *fakeTelemetry) Identify(map[string]interface{}) {}
+
+func (f *fakeTelemetry) TrackCommand(command string, extra map[string]interface{}) {
+	cp := map[string]interface{}{}
+	for k, v := range extra {
+		cp[k] = v
+	}
+	f.trackCalls = append(f.trackCalls, telemetryCall{
+		command: command,
+		extra:   cp,
+	})
+}
+
+func (f *fakeTelemetry) Close() {}
+
+func TestExecute_TracksSuccess(t *testing.T) {
+	t.Setenv("DWELLIR_CONFIG_DIR", t.TempDir())
+	resetOutputFlagsForTest(t)
+	clearAgentMarkers(t)
+	setStdoutTerminalForTest(t, true)
+
+	oldArgs := os.Args
+	oldTelemetry := telemetryClient
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+	rootCmd.SetArgs([]string{"version", "--human"})
+	fake := &fakeTelemetry{}
+	telemetryClient = fake
+	os.Args = []string{"dwellir", "version", "--human"}
+	t.Cleanup(func() {
+		os.Args = oldArgs
+		telemetryClient = oldTelemetry
+		rootCmd.SetArgs(nil)
+	})
+
+	if err := Execute(); err != nil {
+		t.Fatalf("Execute() unexpected error: %v", err)
+	}
+
+	if len(fake.trackCalls) != 1 {
+		t.Fatalf("expected 1 telemetry event, got %d", len(fake.trackCalls))
+	}
+
+	call := fake.trackCalls[0]
+	if call.command != "version" {
+		t.Fatalf("command = %q, want %q", call.command, "version")
+	}
+	if ok, _ := call.extra["success"].(bool); !ok {
+		t.Fatalf("expected success=true, got %#v", call.extra["success"])
+	}
+	if format, _ := call.extra["output_format"].(string); format != "human" {
+		t.Fatalf("output_format = %q, want %q", format, "human")
+	}
+}
+
+func TestExecute_TracksUnknownCommandError(t *testing.T) {
+	t.Setenv("DWELLIR_CONFIG_DIR", t.TempDir())
+	resetOutputFlagsForTest(t)
+	clearAgentMarkers(t)
+	setStdoutTerminalForTest(t, true)
+
+	oldArgs := os.Args
+	oldTelemetry := telemetryClient
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+	rootCmd.SetArgs([]string{"get", "--human"})
+	fake := &fakeTelemetry{}
+	telemetryClient = fake
+	os.Args = []string{"dwellir", "get", "--human"}
+	t.Cleanup(func() {
+		os.Args = oldArgs
+		telemetryClient = oldTelemetry
+		rootCmd.SetArgs(nil)
+	})
+
+	if err := Execute(); err == nil {
+		t.Fatal("Execute() expected error, got nil")
+	}
+
+	if len(fake.trackCalls) != 1 {
+		t.Fatalf("expected 1 telemetry event, got %d", len(fake.trackCalls))
+	}
+	call := fake.trackCalls[0]
+	if ok, _ := call.extra["success"].(bool); ok {
+		t.Fatalf("expected success=false, got %#v", call.extra["success"])
+	}
+	if code, _ := call.extra["error_code"].(string); code != "validation_error" {
+		t.Fatalf("error_code = %q, want %q", code, "validation_error")
+	}
+	if unknown, _ := call.extra["unknown_command"].(string); unknown != "get" {
+		t.Fatalf("unknown_command = %q, want %q", unknown, "get")
 	}
 }

@@ -3,6 +3,7 @@ package telemetry
 import (
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/posthog/posthog-go"
@@ -12,16 +13,18 @@ var (
 	client    posthog.Client
 	userID    string
 	orgID     string
+	deviceID  string
 	anonymous bool
 	version   string
 )
 
-const posthogAPIKey = ""
+var posthogAPIKey = ""
 
-func Init(ver string, user string, org string, anon bool) {
+func Init(ver string, user string, org string, device string, anon bool) {
 	version = ver
 	userID = user
 	orgID = org
+	deviceID = device
 	anonymous = anon
 
 	apiKey := posthogAPIKey
@@ -32,11 +35,20 @@ func Init(ver string, user string, org string, anon bool) {
 		return
 	}
 
+	endpoint := strings.TrimSpace(os.Getenv("DWELLIR_POSTHOG_HOST"))
+	if endpoint == "" {
+		endpoint = strings.TrimSpace(os.Getenv("DWELLIR_POSTHOG_ENDPOINT"))
+	}
+
 	var err error
-	client, err = posthog.NewWithConfig(apiKey, posthog.Config{
+	cfg := posthog.Config{
 		BatchSize: 10,
-		Interval:  30 * time.Second,
-	})
+		Interval:  3 * time.Second,
+	}
+	if endpoint != "" {
+		cfg.Endpoint = endpoint
+	}
+	client, err = posthog.NewWithConfig(apiKey, cfg)
 	if err != nil {
 		return
 	}
@@ -44,8 +56,11 @@ func Init(ver string, user string, org string, anon bool) {
 
 func distinctID() string {
 	if anonymous || userID == "" {
+		if deviceID != "" {
+			return "anon:" + deviceID
+		}
 		if id := os.Getenv("DWELLIR_DEVICE_ID"); id != "" {
-			return "anon:" + id
+			return "anon:" + strings.TrimSpace(id)
 		}
 		return "anon:unknown"
 	}
@@ -53,11 +68,33 @@ func distinctID() string {
 }
 
 func baseProperties() posthog.Properties {
-	return posthog.NewProperties().
+	props := posthog.NewProperties().
 		Set("os", runtime.GOOS).
 		Set("arch", runtime.GOARCH).
-		Set("version", version).
-		Set("org_id", orgID)
+		Set("version", version)
+	if !anonymous && orgID != "" {
+		props.Set("org_id", orgID)
+	}
+	return props
+}
+
+func Identify(extra map[string]interface{}) {
+	if client == nil {
+		return
+	}
+	props := baseProperties().
+		Set("distinct_id", distinctID()).
+		Set("is_anonymous", anonymous || userID == "")
+	if !anonymous && userID != "" {
+		props.Set("user_id", userID)
+	}
+	for k, v := range extra {
+		props.Set(k, v)
+	}
+	_ = client.Enqueue(posthog.Identify{
+		DistinctId: distinctID(),
+		Properties: props,
+	})
 }
 
 func TrackCommand(command string, extra map[string]interface{}) {
