@@ -87,7 +87,7 @@ func (f *HumanFormatter) Error(code string, message string, help string) error {
 			return err
 		}
 	}
-	return &RenderedError{Message: message}
+	return &RenderedError{Code: code, Message: message}
 }
 
 func (f *HumanFormatter) Write(data interface{}) error {
@@ -558,14 +558,25 @@ func (f *HumanFormatter) writeDocsEntries(data interface{}) error {
 					return err
 				}
 			}
+			if entry.URL != "" {
+				if _, err := fmt.Fprintf(f.w, "  %s\n", entry.URL); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	}
 
 	tw := table.NewWriter()
-	tw.AppendHeader(table.Row{"Title", "Slug", "Section", "Description"})
+	tw.AppendHeader(table.Row{"Title", "Slug", "Section", "Description", "URL"})
 	for _, entry := range entries {
-		tw.AppendRow(f.formatTableRow(table.Row{entry.Title, entry.Slug, entry.Section, entry.Description}))
+		tw.AppendRow(f.formatTableRow(table.Row{
+			entry.Title,
+			entry.Slug,
+			entry.Section,
+			entry.Description,
+			entry.URL,
+		}))
 	}
 	return f.renderTable(tw)
 }

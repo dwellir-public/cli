@@ -34,6 +34,7 @@ type Formatter interface {
 
 // RenderedError indicates an error message has already been rendered to the user.
 type RenderedError struct {
+	Code    string
 	Message string
 }
 

@@ -220,6 +220,8 @@ dwellir config get output
 - `DWELLIR_DASHBOARD_URL` — override dashboard URL for browser auth
 - `DWELLIR_DOCS_BASE_URL` — override docs base URL (default: `https://www.dwellir.com/docs`)
 - `DWELLIR_DOCS_INDEX_URL` — override docs index URL (default: `<docs-base>/llms.txt`)
+- `DWELLIR_POSTHOG_KEY` — override PostHog project API key for telemetry
+- `DWELLIR_POSTHOG_HOST` — override PostHog ingestion host (for EU/self-hosted PostHog)
 
 ## Development
 

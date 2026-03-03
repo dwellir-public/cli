@@ -3,7 +3,7 @@ package telemetry
 import "testing"
 
 func TestTrackCommand(t *testing.T) {
-	Init("test-key", "test-user", "test-org", false)
+	Init("test-key", "test-user", "test-org", "test-device", false)
 	defer Close()
 
 	TrackCommand("keys.list", map[string]interface{}{
@@ -13,7 +13,7 @@ func TestTrackCommand(t *testing.T) {
 }
 
 func TestAnonymousMode(t *testing.T) {
-	Init("test-key", "test-user", "test-org", true)
+	Init("test-key", "test-user", "test-org", "test-device", true)
 	defer Close()
 
 	TrackCommand("endpoints.search", nil)

@@ -3,9 +3,11 @@
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "dev")
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+DWELLIR_POSTHOG_KEY ?=
 LDFLAGS := -X github.com/dwellir-public/cli/internal/cli.Version=$(VERSION) \
            -X github.com/dwellir-public/cli/internal/cli.Commit=$(COMMIT) \
-           -X github.com/dwellir-public/cli/internal/cli.BuildDate=$(DATE)
+           -X github.com/dwellir-public/cli/internal/cli.BuildDate=$(DATE) \
+           -X github.com/dwellir-public/cli/internal/telemetry.posthogAPIKey=$(DWELLIR_POSTHOG_KEY)
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/dwellir ./cmd/dwellir

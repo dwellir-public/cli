@@ -150,6 +150,29 @@ func TestHumanDocsGetMarkdown(t *testing.T) {
 	}
 }
 
+func TestHumanDocsSearchIncludesURL(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewHumanFormatter(&buf)
+
+	err := f.Success("docs.search", []api.DocsEntry{
+		{
+			Title:       "Dwellir CLI",
+			Slug:        "cli",
+			Section:     "Networks and Guides",
+			Description: "Install and use the Dwellir CLI.",
+			URL:         "https://www.dwellir.com/docs/cli",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "https://www.dwellir.com/docs/cli") {
+		t.Fatalf("expected docs URL to be included in human output, got:\n%s", got)
+	}
+}
+
 func TestHumanLogsFacets(t *testing.T) {
 	var buf bytes.Buffer
 	f := NewHumanFormatter(&buf)

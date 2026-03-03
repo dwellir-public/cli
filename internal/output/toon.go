@@ -40,7 +40,7 @@ func (f *TOONFormatter) Error(code string, message string, help string) error {
 	if err := f.encode(resp); err != nil {
 		return err
 	}
-	return &RenderedError{Message: message}
+	return &RenderedError{Code: code, Message: message}
 }
 
 func (f *TOONFormatter) Write(data interface{}) error {
