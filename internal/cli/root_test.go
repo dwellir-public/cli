@@ -297,3 +297,39 @@ func TestExecute_TracksUnknownCommandError(t *testing.T) {
 		t.Fatalf("unknown_command = %q, want %q", unknown, "get")
 	}
 }
+
+func TestExecute_TracksUnknownCommandError_WithProfileFlagValue(t *testing.T) {
+	t.Setenv("DWELLIR_CONFIG_DIR", t.TempDir())
+	resetOutputFlagsForTest(t)
+	clearAgentMarkers(t)
+	setStdoutTerminalForTest(t, true)
+
+	oldArgs := os.Args
+	oldTelemetry := telemetryClient
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+	rootCmd.SetArgs([]string{"--profile", "prod", "get", "--human"})
+	fake := &fakeTelemetry{}
+	telemetryClient = fake
+	os.Args = []string{"dwellir", "--profile", "prod", "get", "--human"}
+	t.Cleanup(func() {
+		os.Args = oldArgs
+		telemetryClient = oldTelemetry
+		rootCmd.SetArgs(nil)
+	})
+
+	if err := Execute(); err == nil {
+		t.Fatal("Execute() expected error, got nil")
+	}
+
+	if len(fake.trackCalls) != 1 {
+		t.Fatalf("expected 1 telemetry event, got %d", len(fake.trackCalls))
+	}
+	call := fake.trackCalls[0]
+	if call.command != "get" {
+		t.Fatalf("command = %q, want %q", call.command, "get")
+	}
+	if unknown, _ := call.extra["unknown_command"].(string); unknown != "get" {
+		t.Fatalf("unknown_command = %q, want %q", unknown, "get")
+	}
+}

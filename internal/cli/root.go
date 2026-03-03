@@ -25,6 +25,10 @@ var (
 	anonTelemetry bool
 )
 
+var globalFlagsWithValue = map[string]bool{
+	"--profile": true,
+}
+
 var stdoutIsTerminal = func() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))
 }
@@ -329,13 +333,8 @@ func inferCommandFromArgs(args []string) string {
 			return name
 		}
 	}
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			continue
-		}
-		if trimmed := strings.TrimSpace(arg); trimmed != "" {
-			return trimmed
-		}
+	if arg := firstPositionalArg(args); arg != "" {
+		return arg
 	}
 	return "root"
 }
@@ -355,13 +354,7 @@ func extractUnknownCommand(args []string) string {
 	if _, _, err := rootCmd.Find(args); err == nil {
 		return ""
 	}
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			continue
-		}
-		return strings.TrimSpace(arg)
-	}
-	return ""
+	return firstPositionalArg(args)
 }
 
 func profileFromArgs(args []string) string {
@@ -400,4 +393,33 @@ func parseBoolFlag(value string) bool {
 	default:
 		return false
 	}
+}
+
+func firstPositionalArg(args []string) string {
+	for i := 0; i < len(args); i++ {
+		arg := strings.TrimSpace(args[i])
+		if arg == "" {
+			continue
+		}
+		if arg == "--" {
+			if i+1 < len(args) {
+				return strings.TrimSpace(args[i+1])
+			}
+			return ""
+		}
+		if strings.HasPrefix(arg, "--") {
+			if strings.Contains(arg, "=") {
+				continue
+			}
+			if globalFlagsWithValue[arg] && i+1 < len(args) {
+				i++
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		return arg
+	}
+	return ""
 }
