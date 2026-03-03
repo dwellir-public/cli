@@ -59,12 +59,28 @@ func TestConfigOutputHumanOverridesAgentDefault(t *testing.T) {
 	}
 }
 
-func TestNoConfigStillDefaultsJSONInAgentEnv(t *testing.T) {
+func TestNoConfigStillDefaultsTOONInAgentEnv(t *testing.T) {
 	version := runCLIWithConfigDirAndEnv(t, t.TempDir(), map[string]string{"CODEX_CI": "1"}, "version")
 	if version.exitCode != 0 {
 		t.Fatalf("version command failed: %s", version.stderr)
 	}
-	if !strings.Contains(version.stdout, "{\"ok\":") {
-		t.Fatalf("expected JSON output in agent env without explicit config, got: %s", version.stdout)
+	if strings.Contains(version.stdout, "{\"ok\":") {
+		t.Fatalf("expected TOON output in agent env without explicit config, got JSON: %s", version.stdout)
+	}
+	if !strings.Contains(version.stdout, "ok: true") {
+		t.Fatalf("expected TOON output in agent env without explicit config, got: %s", version.stdout)
+	}
+}
+
+func TestNoConfigDefaultsTOONInNonTTY(t *testing.T) {
+	version := runCLIWithConfigDir(t, t.TempDir(), "version")
+	if version.exitCode != 0 {
+		t.Fatalf("version command failed: %s", version.stderr)
+	}
+	if strings.Contains(version.stdout, "{\"ok\":") {
+		t.Fatalf("expected TOON output in non-TTY mode without explicit config, got JSON: %s", version.stdout)
+	}
+	if !strings.Contains(version.stdout, "ok: true") {
+		t.Fatalf("expected TOON output in non-TTY mode without explicit config, got: %s", version.stdout)
 	}
 }

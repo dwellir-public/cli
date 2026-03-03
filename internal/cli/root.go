@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/dwellir-public/cli/internal/config"
 	"github.com/dwellir-public/cli/internal/output"
@@ -18,6 +19,10 @@ var (
 	quiet         bool
 	anonTelemetry bool
 )
+
+var stdoutIsTerminal = func() bool {
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
 
 var rootCmd = &cobra.Command{
 	Use:   "dwellir",
@@ -42,7 +47,7 @@ Dashboard:     https://dashboard.dwellir.com`,
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
 	rootCmd.PersistentFlags().BoolVar(&humanOutput, "human", false, "Output as human-readable (default)")
-	rootCmd.PersistentFlags().BoolVar(&toonOutput, "toon", false, "Output as TOON (experimental)")
+	rootCmd.PersistentFlags().BoolVar(&toonOutput, "toon", false, "Output as TOON")
 	rootCmd.PersistentFlags().StringVar(&profile, "profile", "", "Use a specific auth profile")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&anonTelemetry, "anon-telemetry", false, "Anonymize telemetry data")
@@ -93,8 +98,8 @@ func resolvedOutputFormat() string {
 	if err == nil && cfg != nil && cfg.Output != "" {
 		format = cfg.Output
 	}
-	if isAgentEnvironment() && !configFileExists(configDir) {
-		format = "json"
+	if shouldAutoSelectStructuredOutput() && !configFileExists(configDir) {
+		format = "toon"
 	}
 	if jsonOutput {
 		format = "json"
@@ -131,6 +136,10 @@ func isAgentEnvironment() bool {
 		}
 	}
 	return false
+}
+
+func shouldAutoSelectStructuredOutput() bool {
+	return isAgentEnvironment() || !stdoutIsTerminal()
 }
 
 func configFileExists(configDir string) bool {

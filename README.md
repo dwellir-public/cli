@@ -8,7 +8,7 @@ Dwellir CLI (`dwellir`) gives you terminal access to core Dwellir dashboard work
 - inspect usage analytics and error logs
 - view account and subscription details
 
-It is designed for both humans and agents, with consistent `--json` output on every command.
+It is designed for both humans and agents, with consistent structured output on every command.
 
 ## Install
 
@@ -139,7 +139,7 @@ Every command supports:
 
 - `--human` (default): readable output
 - `--json`: structured machine-readable output
-- `--toon`: TOON output (experimental, JSON-compatible shape)
+- `--toon`: TOON output (JSON-compatible shape)
 
 Example:
 
@@ -162,7 +162,15 @@ JSON responses use a common envelope:
 
 Errors return `ok: false` and a non-zero exit code.
 
-JSON remains the canonical output contract for integrations. TOON is an alternate wire format.
+Auto-detected non-interactive/agent mode (for example non-TTY runs and environments like Codex/Claude agents) defaults to TOON when no explicit output config is present.
+
+JSON remains supported and is recommended for strict machine pipelines (for example heavy `jq`-first shell automation).
+
+Recent local benchmark runs (Codex + Claude, JSON vs TOON) showed equal task success with fewer tool calls and lower output-token footprint in TOON mode.
+See [Agent Output Benchmark (2026-03-03)](docs/benchmarks/2026-03-03-agent-output-mode-json-vs-toon.md).
+For TOON upstream guidance and broader published benchmarks, see:
+- <https://github.com/toon-format/toon/tree/main/packages/toon#when-not-to-use-toon>
+- <https://github.com/toon-format/toon/tree/main/packages/toon#benchmarks>
 
 ## Profiles and Config
 
