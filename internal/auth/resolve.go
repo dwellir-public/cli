@@ -25,7 +25,7 @@ func ResolveToken(tokenFlag string, profileFlag string, cwd string, configDir st
 
 	p, err := config.LoadProfile(configDir, profileName)
 	if err != nil {
-		return "", fmt.Errorf("not authenticated. Run 'dwellir auth login' or set DWELLIR_TOKEN.\n\nFor headless/CI, create a token at https://dashboard.dwellir.com/agents")
+		return "", fmt.Errorf("profile '%s' is not authenticated. Run 'dwellir auth login --profile %s' or set DWELLIR_TOKEN.\n\nFor headless/CI, create a token at https://dashboard.dwellir.com/agents", profileName, profileName)
 	}
 
 	if p.Token == "" {

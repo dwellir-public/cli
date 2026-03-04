@@ -91,3 +91,36 @@ func TestNoConfigDefaultsHumanInNonTTYWithoutAgentMarkers(t *testing.T) {
 		t.Fatalf("expected human output in non-TTY mode without agent markers, got: %s", version.stdout)
 	}
 }
+
+func TestNoConfigDefaultsHumanWhenAgentOverrideDisabled(t *testing.T) {
+	version := runCLIWithConfigDirAndEnv(t, t.TempDir(), map[string]string{
+		"CODEX_CI":      "1",
+		"DWELLIR_AGENT": "0",
+	}, "version")
+	if version.exitCode != 0 {
+		t.Fatalf("version command failed: %s", version.stderr)
+	}
+	if strings.Contains(version.stdout, "{\"ok\":") {
+		t.Fatalf("expected human output when DWELLIR_AGENT=0, got JSON: %s", version.stdout)
+	}
+	if !strings.Contains(version.stdout, "Version") {
+		t.Fatalf("expected human output when DWELLIR_AGENT=0, got: %s", version.stdout)
+	}
+}
+
+func TestNoConfigDefaultsTOONWhenAgentOverrideForced(t *testing.T) {
+	version := runCLIWithConfigDirAndEnv(t, t.TempDir(), map[string]string{
+		"CODEX_CI":        "",
+		"CODEX_THREAD_ID": "",
+		"DWELLIR_AGENT":   "1",
+	}, "version")
+	if version.exitCode != 0 {
+		t.Fatalf("version command failed: %s", version.stderr)
+	}
+	if strings.Contains(version.stdout, "{\"ok\":") {
+		t.Fatalf("expected TOON output when DWELLIR_AGENT=1, got JSON: %s", version.stdout)
+	}
+	if !strings.Contains(version.stdout, "ok: true") {
+		t.Fatalf("expected TOON output when DWELLIR_AGENT=1, got: %s", version.stdout)
+	}
+}

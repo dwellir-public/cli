@@ -165,9 +165,8 @@ func newAPIClient() (*api.Client, error) {
 	client := api.NewClient(baseURL, token)
 
 	client.OnTokenRefresh = func(newToken string) {
-		envProfile := os.Getenv("DWELLIR_PROFILE")
-		profileName := config.ResolveProfileName(profile, envProfile, cwd, configDir)
-		p, _ := config.LoadProfile(configDir, profileName)
+		ctx := resolveProfileContext(profile, cwd, configDir)
+		p, _ := config.LoadProfile(configDir, ctx.Name)
 		if p != nil {
 			p.Token = newToken
 			_ = config.SaveProfile(configDir, p)

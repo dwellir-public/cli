@@ -40,6 +40,31 @@ func TestResolvedOutputFormat_DefaultsHumanForNonTerminalWithoutAgentMarkers(t *
 	}
 }
 
+func TestResolvedOutputFormat_DwellirAgentOverrideForcesAutoStructuredOutput(t *testing.T) {
+	t.Setenv("DWELLIR_CONFIG_DIR", t.TempDir())
+	resetOutputFlagsForTest(t)
+	clearAgentMarkers(t)
+	setStdoutTerminalForTest(t, false)
+	t.Setenv("DWELLIR_AGENT", "1")
+
+	if got := resolvedOutputFormat(); got != "toon" {
+		t.Fatalf("resolvedOutputFormat() = %q, want %q", got, "toon")
+	}
+}
+
+func TestResolvedOutputFormat_DwellirAgentOverrideCanDisableAgentDetection(t *testing.T) {
+	t.Setenv("DWELLIR_CONFIG_DIR", t.TempDir())
+	resetOutputFlagsForTest(t)
+	clearAgentMarkers(t)
+	setStdoutTerminalForTest(t, false)
+	t.Setenv("CODEX_CI", "1")
+	t.Setenv("DWELLIR_AGENT", "0")
+
+	if got := resolvedOutputFormat(); got != "human" {
+		t.Fatalf("resolvedOutputFormat() = %q, want %q", got, "human")
+	}
+}
+
 func TestResolvedOutputFormat_HumanFlagOverridesAgentDefault(t *testing.T) {
 	t.Setenv("DWELLIR_CONFIG_DIR", t.TempDir())
 	resetOutputFlagsForTest(t)
@@ -188,6 +213,7 @@ func clearAgentMarkers(t *testing.T) {
 		"CLAUDE_CODE_ENTRYPOINT",
 		"OPENCODE",
 		"CURSOR_AGENT",
+		"DWELLIR_AGENT",
 	} {
 		t.Setenv(key, "")
 	}

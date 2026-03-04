@@ -123,6 +123,8 @@ Top-level commands:
 - `dwellir logs` — errors/stats/facets with filters
 - `dwellir account` — info/subscription
 - `dwellir config` — set/get/list CLI config
+- `dwellir profiles` — list/current/bind/unbind profile context
+- `dwellir doctor` — diagnose auth/profile/output state
 - `dwellir version` — build/version metadata
 - `dwellir update` — self-update from GitHub releases
 
@@ -163,6 +165,7 @@ JSON responses use a common envelope:
 Errors return `ok: false` and a non-zero exit code.
 
 Auto-detected non-interactive/agent mode (for example non-TTY runs and environments like Codex/Claude agents) defaults to TOON when no explicit output config is present.
+Set `DWELLIR_AGENT=1` to force agent-mode auto selection, or `DWELLIR_AGENT=0` to disable agent detection for the current shell.
 
 JSON remains supported and is recommended for strict machine pipelines (for example heavy `jq`-first shell automation).
 
@@ -193,6 +196,14 @@ dwellir config set output json
 dwellir config set output toon
 dwellir config set default_profile work
 dwellir config get output
+
+dwellir profiles list
+dwellir profiles current
+dwellir profiles bind work
+dwellir profiles unbind
+
+dwellir doctor
+dwellir doctor --verify-api
 ```
 
 ## Resolution Rules
@@ -215,6 +226,7 @@ dwellir config get output
 
 - `DWELLIR_TOKEN` — explicit auth token override
 - `DWELLIR_PROFILE` — default profile override
+- `DWELLIR_AGENT` — force/disable agent-environment detection (`1` or `0`)
 - `DWELLIR_CONFIG_DIR` — custom config directory
 - `DWELLIR_API_URL` — override API base URL (default: `https://dashboard.dwellir.com/marly-api`)
 - `DWELLIR_DASHBOARD_URL` — override dashboard URL for browser auth

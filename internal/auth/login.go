@@ -108,6 +108,11 @@ func newLoginMux(dashboardURL string, resultCh chan<- *CallbackPayload, errCh ch
 			errCh <- fmt.Errorf("invalid callback payload: %w", err)
 			return
 		}
+		if strings.TrimSpace(payload.Token) == "" {
+			http.Error(w, "missing token", http.StatusBadRequest)
+			errCh <- fmt.Errorf("invalid callback payload: missing token")
+			return
+		}
 
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, `{"status":"ok"}`)
