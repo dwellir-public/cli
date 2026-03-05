@@ -233,7 +233,7 @@ dwellir doctor --verify-api
 - `DWELLIR_DOCS_BASE_URL` — override docs base URL (default: `https://www.dwellir.com/docs`)
 - `DWELLIR_DOCS_INDEX_URL` — override docs index URL (default: `<docs-base>/llms.txt`)
 - `DWELLIR_POSTHOG_KEY` — override PostHog project API key for telemetry
-- `DWELLIR_POSTHOG_HOST` — override PostHog ingestion host (for EU/self-hosted PostHog)
+- `DWELLIR_POSTHOG_HOST` — override PostHog ingestion host (defaults to `https://eu.i.posthog.com`; useful for self-hosted PostHog)
 
 ## Development
 
