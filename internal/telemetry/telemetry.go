@@ -19,6 +19,7 @@ var (
 )
 
 var posthogAPIKey = ""
+var posthogEndpoint = "https://eu.i.posthog.com"
 
 func Init(ver string, user string, org string, device string, anon bool) {
 	version = ver
@@ -35,10 +36,7 @@ func Init(ver string, user string, org string, device string, anon bool) {
 		return
 	}
 
-	endpoint := strings.TrimSpace(os.Getenv("DWELLIR_POSTHOG_HOST"))
-	if endpoint == "" {
-		endpoint = strings.TrimSpace(os.Getenv("DWELLIR_POSTHOG_ENDPOINT"))
-	}
+	endpoint := resolveEndpoint()
 
 	var err error
 	cfg := posthog.Config{
@@ -52,6 +50,16 @@ func Init(ver string, user string, org string, device string, anon bool) {
 	if err != nil {
 		return
 	}
+}
+
+func resolveEndpoint() string {
+	if endpoint := strings.TrimSpace(os.Getenv("DWELLIR_POSTHOG_HOST")); endpoint != "" {
+		return endpoint
+	}
+	if endpoint := strings.TrimSpace(os.Getenv("DWELLIR_POSTHOG_ENDPOINT")); endpoint != "" {
+		return endpoint
+	}
+	return strings.TrimSpace(posthogEndpoint)
 }
 
 func distinctID() string {
