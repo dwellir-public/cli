@@ -71,11 +71,103 @@ func (f *HumanFormatter) Success(command string, data interface{}) error {
 		return f.writeDocsEntries(data)
 	case "docs.get":
 		return f.writeDocsPage(data)
+	case "profiles.list":
+		return f.writeProfilesList(data)
+	case "profiles.current", "profiles.bind", "profiles.unbind":
+		return f.Write(data)
+	case "doctor":
+		return f.writeDoctor(data)
 	case "auth.login", "auth.logout", "auth.status", "config.set", "config.get", "config.list", "version", "update":
 		return f.Write(data)
 	default:
 		return f.Write(data)
 	}
+}
+
+func (f *HumanFormatter) writeDoctor(data interface{}) error {
+	body, ok := data.(map[string]interface{})
+	if !ok {
+		return f.Write(data)
+	}
+
+	if summary, ok := body["summary"].(map[string]int); ok {
+		if err := f.writeKeyValue(map[string]interface{}{
+			"ok":    summary["ok"],
+			"warn":  summary["warn"],
+			"error": summary["error"],
+		}); err != nil {
+			return err
+		}
+	}
+
+	checks, ok := body["checks"].([]map[string]interface{})
+	if !ok {
+		if generic, genericOK := body["checks"].([]interface{}); genericOK {
+			checks = make([]map[string]interface{}, 0, len(generic))
+			for _, item := range generic {
+				if mapped, mappedOK := item.(map[string]interface{}); mappedOK {
+					checks = append(checks, mapped)
+				}
+			}
+		}
+	}
+
+	if len(checks) == 0 {
+		return nil
+	}
+
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Check", "Status", "Message"})
+	for _, check := range checks {
+		tw.AppendRow(f.formatTableRow(table.Row{
+			fmt.Sprint(check["name"]),
+			fmt.Sprint(check["status"]),
+			fmt.Sprint(check["message"]),
+		}))
+	}
+	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeProfilesList(data interface{}) error {
+	entries, ok := data.([]map[string]interface{})
+	if !ok {
+		return f.Write(data)
+	}
+	if len(entries) == 0 {
+		_, err := fmt.Fprintln(f.w, "No profiles found.")
+		return err
+	}
+
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Profile", "Active", "Source", "Token", "User", "Org"})
+	for _, entry := range entries {
+		name := fmt.Sprint(entry["name"])
+		active := entry["active"] == true
+		source := ""
+		if raw := entry["active_source"]; raw != nil {
+			source = fmt.Sprint(raw)
+		}
+		tokenPresent := entry["token_present"] == true
+		user := ""
+		if raw := entry["user"]; raw != nil {
+			user = fmt.Sprint(raw)
+		}
+		org := ""
+		if raw := entry["org"]; raw != nil {
+			org = fmt.Sprint(raw)
+		}
+
+		tw.AppendRow(f.formatTableRow(table.Row{
+			name,
+			yesNo(active),
+			source,
+			yesNo(tokenPresent),
+			user,
+			org,
+		}))
+	}
+
+	return f.renderTable(tw)
 }
 
 func (f *HumanFormatter) Error(code string, message string, help string) error {

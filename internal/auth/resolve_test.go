@@ -3,6 +3,7 @@ package auth
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dwellir-public/cli/internal/config"
@@ -74,5 +75,20 @@ func TestResolveTokenMissing(t *testing.T) {
 	_, err := ResolveToken("", "", t.TempDir(), t.TempDir())
 	if err == nil {
 		t.Fatal("expected error when no token is available")
+	}
+}
+
+func TestResolveTokenMissingProfileMentionsResolvedProfile(t *testing.T) {
+	configDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configDir, "config.json"), []byte(`{"output":"human","default_profile":"bench"}`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, err := ResolveToken("", "", t.TempDir(), configDir)
+	if err == nil {
+		t.Fatal("expected error when resolved profile is missing")
+	}
+	if !strings.Contains(err.Error(), "bench") {
+		t.Fatalf("expected error to mention resolved profile bench, got: %s", err.Error())
 	}
 }

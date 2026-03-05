@@ -29,12 +29,10 @@ var authLoginCmd = &cobra.Command{
 		f := getFormatter()
 
 		if tokenFlag != "" {
-			profileName := profile
-			if profileName == "" {
-				profileName = "default"
-			}
+			cwd, _ := os.Getwd()
+			ctx := resolveProfileContext(profile, cwd, configDir)
 			p := &config.Profile{
-				Name:  profileName,
+				Name:  ctx.Name,
 				Token: tokenFlag,
 			}
 			if err := config.SaveProfile(configDir, p); err != nil {
@@ -42,7 +40,7 @@ var authLoginCmd = &cobra.Command{
 			}
 			return f.Success("auth.login", map[string]string{
 				"status":  "authenticated",
-				"profile": profileName,
+				"profile": ctx.Name,
 				"method":  "token",
 			})
 		}
@@ -52,7 +50,10 @@ var authLoginCmd = &cobra.Command{
 			dashboardURL = defaultDashboardURL
 		}
 
-		p, err := auth.Login(configDir, profile, dashboardURL)
+		cwd, _ := os.Getwd()
+		ctx := resolveProfileContext(profile, cwd, configDir)
+
+		p, err := auth.Login(configDir, ctx.Name, dashboardURL)
 		if err != nil {
 			return f.Error("auth_failed", err.Error(), "")
 		}
@@ -73,15 +74,13 @@ var authLogoutCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		configDir := config.DefaultConfigDir()
 		f := getFormatter()
-		profileName := profile
-		if profileName == "" {
-			profileName = "default"
-		}
-		profilePath := filepath.Join(configDir, "profiles", profileName+".json")
+		cwd, _ := os.Getwd()
+		ctx := resolveProfileContext(profile, cwd, configDir)
+		profilePath := filepath.Join(configDir, "profiles", ctx.Name+".json")
 		_ = os.Remove(profilePath)
 		return f.Success("auth.logout", map[string]string{
 			"status":  "logged_out",
-			"profile": profileName,
+			"profile": ctx.Name,
 		})
 	},
 }

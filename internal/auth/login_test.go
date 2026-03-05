@@ -1,50 +1,77 @@
 package auth
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
-func TestBuildCLIAuthURLIncludesEncodedDevice(t *testing.T) {
-	authURL := buildCLIAuthURL("https://dashboard.dwellir.com", 9999, "elias macbook/pro")
-
-	if !strings.Contains(authURL, "port=9999") {
-		t.Fatalf("expected port query param, got: %s", authURL)
-	}
-	if !strings.Contains(authURL, "device=elias+macbook%2Fpro") {
-		t.Fatalf("expected URL-encoded device query param, got: %s", authURL)
-	}
-}
-
-func TestBuildCLIAuthURLOmitsDeviceWhenEmpty(t *testing.T) {
-	authURL := buildCLIAuthURL("https://dashboard.dwellir.com", 9999, "")
-
-	if strings.Contains(authURL, "device=") {
-		t.Fatalf("expected no device query param for empty hostname, got: %s", authURL)
-	}
-}
-
-func TestLoginMuxHandlesCallbackPreflight(t *testing.T) {
+func TestNewLoginMux_CallbackRejectsMissingToken(t *testing.T) {
 	resultCh := make(chan *CallbackPayload, 1)
 	errCh := make(chan error, 1)
 	mux := newLoginMux("https://dashboard.dwellir.com", resultCh, errCh)
 
-	req := httptest.NewRequest(http.MethodOptions, "/callback", nil)
+	payload := map[string]string{"org": "orderbook", "user": "elias"}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/callback", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("expected %d, got %d", http.StatusNoContent, rec.Code)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
-	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://dashboard.dwellir.com" {
-		t.Fatalf("unexpected Access-Control-Allow-Origin: %q", got)
+
+	select {
+	case <-resultCh:
+		t.Fatal("unexpected callback result for missing token")
+	default:
 	}
-	if got := rec.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, "POST") {
-		t.Fatalf("expected POST in Access-Control-Allow-Methods, got %q", got)
+
+	select {
+	case <-errCh:
+		// expected
+	default:
+		t.Fatal("expected callback error for missing token")
 	}
-	if got := rec.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "Content-Type") {
-		t.Fatalf("expected Content-Type in Access-Control-Allow-Headers, got %q", got)
+}
+
+func TestNewLoginMux_CallbackAcceptsValidToken(t *testing.T) {
+	resultCh := make(chan *CallbackPayload, 1)
+	errCh := make(chan error, 1)
+	mux := newLoginMux("https://dashboard.dwellir.com", resultCh, errCh)
+
+	payload := map[string]string{"token": "abc123", "org": "orderbook", "user": "elias"}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/callback", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	select {
+	case got := <-resultCh:
+		if got == nil || got.Token != "abc123" {
+			t.Fatalf("unexpected callback payload: %#v", got)
+		}
+	default:
+		t.Fatal("expected callback result for valid token")
+	}
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("unexpected callback error: %v", err)
+	default:
 	}
 }

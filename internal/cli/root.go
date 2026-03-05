@@ -191,6 +191,10 @@ func getFormatter() output.Formatter {
 }
 
 func isAgentEnvironment() bool {
+	if forced, ok := agentOverrideFromEnv(); ok {
+		return forced
+	}
+
 	markers := [...]string{
 		"CODEX_CI",
 		"CODEX_THREAD_ID",
@@ -205,6 +209,14 @@ func isAgentEnvironment() bool {
 		}
 	}
 	return false
+}
+
+func agentOverrideFromEnv() (bool, bool) {
+	value := strings.TrimSpace(os.Getenv("DWELLIR_AGENT"))
+	if value == "" {
+		return false, false
+	}
+	return parseBoolFlag(value), true
 }
 
 func shouldAutoSelectStructuredOutput() bool {
