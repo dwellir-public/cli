@@ -25,7 +25,7 @@ jobs:
           go mod tidy
 
       - name: Open PR if changes exist
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: chore/auto-update-posthog-go
           delete-branch: true
