@@ -3,11 +3,22 @@ updates:
   - package-ecosystem: gomod
     directory: "/"
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
+      interval: daily
+      time: "05:40"
+    open-pull-requests-limit: 20
+    commit-message:
+      prefix: "chore"
+    labels:
+      - "dependencies"
+      - "automated"
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore"
+    labels:
+      - "dependencies"
+      - "automated"
