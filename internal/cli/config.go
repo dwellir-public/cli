@@ -16,7 +16,7 @@ var configCmd = &cobra.Command{
 var configSetCmd = &cobra.Command{
 	Use:   "set <key> <value>",
 	Short: "Set a config value",
-	Long:  "Set a CLI configuration value.\n\nValid keys: output (json|human), default_profile (<name>)",
+	Long:  "Set a CLI configuration value.\n\nValid keys: output (json|human|toon), default_profile (<name>)",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load(config.DefaultConfigDir())

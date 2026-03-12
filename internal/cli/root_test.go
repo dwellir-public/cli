@@ -113,6 +113,7 @@ func TestResolvedOutputFormat_ConfigOverridesAgentDefaultWhenConfigExists(t *tes
 	resetOutputFlagsForTest(t)
 	clearAgentMarkers(t)
 	t.Setenv("CODEX_CI", "1")
+	setStdoutTerminalForTest(t, false)
 	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"output":"human","default_profile":"default"}`), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -122,18 +123,19 @@ func TestResolvedOutputFormat_ConfigOverridesAgentDefaultWhenConfigExists(t *tes
 	}
 }
 
-func TestResolvedOutputFormat_ConfigOverridesNonTerminalAutoDefaultWhenConfigExists(t *testing.T) {
+func TestResolvedOutputFormat_AgentDefaultUsesTOONWhenConfigExistsWithoutExplicitOutput(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("DWELLIR_CONFIG_DIR", dir)
 	resetOutputFlagsForTest(t)
 	clearAgentMarkers(t)
 	setStdoutTerminalForTest(t, false)
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"output":"human","default_profile":"default"}`), 0o600); err != nil {
+	t.Setenv("CODEX_CI", "1")
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"default_profile":"work"}`), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
-	if got := resolvedOutputFormat(); got != "human" {
-		t.Fatalf("resolvedOutputFormat() = %q, want %q", got, "human")
+	if got := resolvedOutputFormat(); got != "toon" {
+		t.Fatalf("resolvedOutputFormat() = %q, want %q", got, "toon")
 	}
 }
 
