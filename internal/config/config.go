@@ -12,6 +12,7 @@ type Config struct {
 	Output         string `json:"output"`
 	DefaultProfile string `json:"default_profile"`
 	configDir      string
+	outputExplicit bool
 }
 
 var validKeys = map[string]bool{
@@ -35,8 +36,19 @@ func Load(configDir string) (*Config, error) {
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
 
-	if err := json.Unmarshal(data, cfg); err != nil {
+	var raw struct {
+		Output         *string `json:"output"`
+		DefaultProfile *string `json:"default_profile"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+	if raw.Output != nil {
+		cfg.Output = *raw.Output
+		cfg.outputExplicit = cfg.Output != ""
+	}
+	if raw.DefaultProfile != nil {
+		cfg.DefaultProfile = *raw.DefaultProfile
 	}
 	cfg.configDir = configDir
 	return cfg, nil
@@ -52,6 +64,7 @@ func (c *Config) Set(key, value string) error {
 			return fmt.Errorf("output must be 'json', 'human', or 'toon'")
 		}
 		c.Output = value
+		c.outputExplicit = true
 	case "default_profile":
 		c.DefaultProfile = value
 	}
@@ -80,12 +93,28 @@ func (c *Config) Save() error {
 	if err := os.MkdirAll(c.configDir, 0o700); err != nil {
 		return fmt.Errorf("creating config dir: %w", err)
 	}
-	data, err := json.MarshalIndent(c, "", "  ")
+
+	toSave := struct {
+		Output         *string `json:"output,omitempty"`
+		DefaultProfile string  `json:"default_profile"`
+	}{
+		DefaultProfile: c.DefaultProfile,
+	}
+	if c.outputExplicit {
+		output := c.Output
+		toSave.Output = &output
+	}
+
+	data, err := json.MarshalIndent(toSave, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 	path := filepath.Join(c.configDir, "config.json")
 	return os.WriteFile(path, data, 0o600)
+}
+
+func (c *Config) HasExplicitOutput() bool {
+	return c != nil && c.outputExplicit
 }
 
 // DefaultConfigDir returns the XDG-compliant config directory.

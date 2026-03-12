@@ -164,7 +164,7 @@ JSON responses use a common envelope:
 
 Errors return `ok: false` and a non-zero exit code.
 
-Auto-detected non-interactive/agent mode (for example non-TTY runs and environments like Codex/Claude agents) defaults to TOON when no explicit output config is present.
+Auto-detected non-interactive/agent mode (for example non-TTY runs and environments like Codex/Claude agents) defaults to TOON when no explicit output config is present, even if `config.json` exists for unrelated settings.
 Set `DWELLIR_AGENT=1` to force agent-mode auto selection, or `DWELLIR_AGENT=0` to disable agent detection for the current shell.
 
 JSON remains supported and is recommended for strict machine pipelines (for example heavy `jq`-first shell automation).

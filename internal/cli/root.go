@@ -167,7 +167,7 @@ func resolvedOutputFormat() string {
 	if err == nil && cfg != nil && cfg.Output != "" {
 		format = cfg.Output
 	}
-	if shouldAutoSelectStructuredOutput() && !configFileExists(configDir) {
+	if shouldAutoSelectStructuredOutput() && (cfg == nil || !cfg.HasExplicitOutput()) {
 		format = "toon"
 	}
 	if jsonOutput {

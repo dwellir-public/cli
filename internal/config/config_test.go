@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -61,6 +62,61 @@ func TestSaveAndReload(t *testing.T) {
 	}
 	if cfg2.Output != "json" {
 		t.Errorf("expected 'json' after reload, got '%s'", cfg2.Output)
+	}
+}
+
+func TestSetDefaultProfileDoesNotPersistImplicitHumanOutput(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := cfg.Set("default_profile", "work"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+
+	var stored map[string]string
+	if err := json.Unmarshal(data, &stored); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+
+	if _, ok := stored["output"]; ok {
+		t.Fatalf("expected output to be omitted, got %q", stored["output"])
+	}
+	if got := stored["default_profile"]; got != "work" {
+		t.Fatalf("default_profile = %q, want %q", got, "work")
+	}
+}
+
+func TestSetExplicitHumanOutputPersistsOutput(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := cfg.Set("output", "human"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+
+	var stored map[string]string
+	if err := json.Unmarshal(data, &stored); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+
+	if got := stored["output"]; got != "human" {
+		t.Fatalf("output = %q, want %q", got, "human")
 	}
 }
 

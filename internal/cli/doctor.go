@@ -122,13 +122,17 @@ var doctorCmd = &cobra.Command{
 
 func buildDoctorOutputModeCheck(configDir string) map[string]interface{} {
 	configOutput := ""
-	if cfg, err := config.Load(configDir); err == nil && cfg != nil && configFileExists(configDir) {
-		configOutput = cfg.Output
+	hasExplicitOutput := false
+	if cfg, err := config.Load(configDir); err == nil && cfg != nil {
+		hasExplicitOutput = cfg.HasExplicitOutput()
+		if hasExplicitOutput {
+			configOutput = cfg.Output
+		}
 	}
 
 	autoDefault := "human"
 	autoSelected := false
-	if shouldAutoSelectStructuredOutput() && !configFileExists(configDir) {
+	if shouldAutoSelectStructuredOutput() && !hasExplicitOutput {
 		autoDefault = "toon"
 		autoSelected = true
 	}
