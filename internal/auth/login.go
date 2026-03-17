@@ -126,6 +126,9 @@ func setCallbackCORSHeaders(w http.ResponseWriter, dashboardURL string) {
 	w.Header().Set("Access-Control-Allow-Origin", dashboardURL)
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	// Chrome's Private Network Access (CORS-RFC1918) requires this header
+	// when a public website makes requests to localhost/private networks.
+	w.Header().Set("Access-Control-Allow-Private-Network", "true")
 }
 
 func machineHostname() string {
