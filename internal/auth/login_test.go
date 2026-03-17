@@ -75,3 +75,23 @@ func TestNewLoginMux_CallbackAcceptsValidToken(t *testing.T) {
 	default:
 	}
 }
+
+func TestNewLoginMux_PreflightIncludesPNAHeader(t *testing.T) {
+	resultCh := make(chan *CallbackPayload, 1)
+	errCh := make(chan error, 1)
+	mux := newLoginMux("https://dashboard.dwellir.com", resultCh, errCh)
+
+	req := httptest.NewRequest(http.MethodOptions, "/callback", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Private-Network"); got != "true" {
+		t.Fatalf("Access-Control-Allow-Private-Network = %q, want %q", got, "true")
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://dashboard.dwellir.com" {
+		t.Fatalf("Access-Control-Allow-Origin = %q, want %q", got, "https://dashboard.dwellir.com")
+	}
+}
