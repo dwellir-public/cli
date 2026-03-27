@@ -7,6 +7,8 @@ import (
 	"net"
 )
 
+const apiKeysBasePath = "/v4/organization/apikeys"
+
 type APIKey struct {
 	APIKey       string `json:"api_key"`
 	Name         string `json:"name"`
@@ -40,13 +42,13 @@ func NewKeysAPI(client *Client) *KeysAPI {
 
 func (k *KeysAPI) List() ([]APIKey, error) {
 	var keys []APIKey
-	err := k.client.Get("/v3/user/apikeys", nil, &keys)
+	err := k.client.Get(apiKeysBasePath, nil, &keys)
 	return keys, err
 }
 
 func (k *KeysAPI) Create(input CreateKeyInput) (*APIKey, error) {
 	var key APIKey
-	err := k.client.Post("/v3/user/apikey", input, &key)
+	err := k.client.Post(apiKeysBasePath, input, &key)
 	return &key, err
 }
 
@@ -81,16 +83,17 @@ func (k *KeysAPI) Update(apiKey string, input UpdateKeyInput) (*APIKey, error) {
 		payload.MonthlyQuota = input.MonthlyQuota
 	}
 
+	path := fmt.Sprintf("%s/%s", apiKeysBasePath, apiKey)
 	var key APIKey
-	err = k.client.Post(fmt.Sprintf("/user/apikey/%s", apiKey), payload, &key)
+	err = k.client.Post(path, payload, &key)
 	if err != nil && isTimeoutError(err) {
-		err = k.client.Post(fmt.Sprintf("/user/apikey/%s", apiKey), payload, &key)
+		err = k.client.Post(path, payload, &key)
 	}
 	return &key, err
 }
 
 func (k *KeysAPI) Delete(apiKey string) error {
-	return k.client.Delete(fmt.Sprintf("/user/apikey/%s", apiKey), nil)
+	return k.client.Delete(fmt.Sprintf("%s/%s", apiKeysBasePath, apiKey), nil)
 }
 
 func (k *KeysAPI) Enable(apiKey string) (*APIKey, error) {

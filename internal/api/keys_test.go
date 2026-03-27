@@ -17,7 +17,10 @@ func TestListKeys(t *testing.T) {
 		{APIKey: "abc-123", Name: "test-key", Enabled: true},
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v3/user/apikeys" {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/v4/organization/apikeys" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		if err := json.NewEncoder(w).Encode(keys); err != nil {
@@ -44,6 +47,9 @@ func TestCreateKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/v4/organization/apikeys" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		var input CreateKeyInput
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -80,11 +86,11 @@ func TestUpdateSendsFullPayload(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v3/user/apikeys":
+		case r.Method == http.MethodGet && r.URL.Path == "/v4/organization/apikeys":
 			if err := json.NewEncoder(w).Encode([]APIKey{current}); err != nil {
 				t.Errorf("failed to write response: %v", err)
 			}
-		case r.Method == http.MethodPost && r.URL.Path == "/user/apikey/abc-123":
+		case r.Method == http.MethodPost && r.URL.Path == "/v4/organization/apikeys/abc-123":
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
 				t.Fatalf("failed to read body: %v", err)
@@ -129,7 +135,7 @@ func TestUpdateSendsFullPayload(t *testing.T) {
 
 func TestUpdateMissingKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && r.URL.Path == "/v3/user/apikeys" {
+		if r.Method == http.MethodGet && r.URL.Path == "/v4/organization/apikeys" {
 			_ = json.NewEncoder(w).Encode([]APIKey{{APIKey: "another-key"}})
 			return
 		}
@@ -152,14 +158,14 @@ func TestUpdateRetriesTimeoutOnce(t *testing.T) {
 	client.httpClient = &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			switch {
-			case req.Method == http.MethodGet && req.URL.Path == "/v3/user/apikeys":
+			case req.Method == http.MethodGet && req.URL.Path == "/v4/organization/apikeys":
 				body, _ := json.Marshal([]APIKey{{
 					APIKey:  "abc-123",
 					Name:    "key",
 					Enabled: true,
 				}})
 				return jsonResponse(req, http.StatusOK, body), nil
-			case req.Method == http.MethodPost && req.URL.Path == "/user/apikey/abc-123":
+			case req.Method == http.MethodPost && req.URL.Path == "/v4/organization/apikeys/abc-123":
 				count := atomic.AddInt32(&postCount, 1)
 				if count == 1 {
 					return nil, timeoutErr{err: context.DeadlineExceeded}
@@ -171,7 +177,8 @@ func TestUpdateRetriesTimeoutOnce(t *testing.T) {
 				})
 				return jsonResponse(req, http.StatusOK, body), nil
 			default:
-				return nil, nil
+				t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
+				return nil, context.Canceled
 			}
 		}),
 	}
@@ -187,6 +194,32 @@ func TestUpdateRetriesTimeoutOnce(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&postCount); got != 2 {
 		t.Fatalf("expected 2 POST attempts, got %d", got)
+	}
+}
+
+func TestDeleteKey(t *testing.T) {
+	var gotMethod string
+	var gotPath string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "token")
+	ka := NewKeysAPI(client)
+
+	if err := ka.Delete("abc-123"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotMethod != http.MethodDelete {
+		t.Fatalf("expected DELETE, got %s", gotMethod)
+	}
+	if gotPath != "/v4/organization/apikeys/abc-123" {
+		t.Fatalf("unexpected path: %s", gotPath)
 	}
 }
 
