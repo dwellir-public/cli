@@ -20,7 +20,7 @@ jobs:
   prepare:
     name: Prepare
     if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
@@ -73,7 +73,7 @@ jobs:
     name: Publish AUR
     needs: prepare
     if: ${{ needs.prepare.outputs.aur_configured == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     env:
       AUR_PACKAGE_NAME: ${{ vars.AUR_PACKAGE_NAME }}
     steps:
@@ -139,7 +139,7 @@ jobs:
     name: AUR Not Configured
     needs: prepare
     if: ${{ needs.prepare.outputs.aur_configured != 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Explain setup requirement
         run: |
