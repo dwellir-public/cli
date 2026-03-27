@@ -40,13 +40,13 @@ func NewKeysAPI(client *Client) *KeysAPI {
 
 func (k *KeysAPI) List() ([]APIKey, error) {
 	var keys []APIKey
-	err := k.client.Get("/v3/user/apikeys", nil, &keys)
+	err := k.client.Get("/v4/organization/apikeys", nil, &keys)
 	return keys, err
 }
 
 func (k *KeysAPI) Create(input CreateKeyInput) (*APIKey, error) {
 	var key APIKey
-	err := k.client.Post("/v3/user/apikey", input, &key)
+	err := k.client.Post("/v4/organization/apikeys", input, &key)
 	return &key, err
 }
 
@@ -82,15 +82,15 @@ func (k *KeysAPI) Update(apiKey string, input UpdateKeyInput) (*APIKey, error) {
 	}
 
 	var key APIKey
-	err = k.client.Post(fmt.Sprintf("/user/apikey/%s", apiKey), payload, &key)
+	err = k.client.Post(fmt.Sprintf("/v4/organization/apikeys/%s", apiKey), payload, &key)
 	if err != nil && isTimeoutError(err) {
-		err = k.client.Post(fmt.Sprintf("/user/apikey/%s", apiKey), payload, &key)
+		err = k.client.Post(fmt.Sprintf("/v4/organization/apikeys/%s", apiKey), payload, &key)
 	}
 	return &key, err
 }
 
 func (k *KeysAPI) Delete(apiKey string) error {
-	return k.client.Delete(fmt.Sprintf("/user/apikey/%s", apiKey), nil)
+	return k.client.Delete(fmt.Sprintf("/v4/organization/apikeys/%s", apiKey), nil)
 }
 
 func (k *KeysAPI) Enable(apiKey string) (*APIKey, error) {
