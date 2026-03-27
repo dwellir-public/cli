@@ -17,6 +17,9 @@ func TestListKeys(t *testing.T) {
 		{APIKey: "abc-123", Name: "test-key", Enabled: true},
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
 		if r.URL.Path != "/v4/organization/apikeys" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
@@ -174,7 +177,8 @@ func TestUpdateRetriesTimeoutOnce(t *testing.T) {
 				})
 				return jsonResponse(req, http.StatusOK, body), nil
 			default:
-				return nil, nil
+				t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
+				return nil, context.Canceled
 			}
 		}),
 	}
@@ -190,6 +194,32 @@ func TestUpdateRetriesTimeoutOnce(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&postCount); got != 2 {
 		t.Fatalf("expected 2 POST attempts, got %d", got)
+	}
+}
+
+func TestDeleteKey(t *testing.T) {
+	var gotMethod string
+	var gotPath string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "token")
+	ka := NewKeysAPI(client)
+
+	if err := ka.Delete("abc-123"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotMethod != http.MethodDelete {
+		t.Fatalf("expected DELETE, got %s", gotMethod)
+	}
+	if gotPath != "/v4/organization/apikeys/abc-123" {
+		t.Fatalf("unexpected path: %s", gotPath)
 	}
 }
 
