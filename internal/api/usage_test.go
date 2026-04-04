@@ -10,7 +10,7 @@ import (
 
 func TestUsageHistoryRequestShape(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v4/user/analytics" {
+		if r.URL.Path != "/v4/organization/analytics" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 
@@ -58,7 +58,7 @@ func TestUsageHistoryRequestShape(t *testing.T) {
 
 func TestUsageHistoryMapsStartTimeToTimestamp(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v4/user/analytics" {
+		if r.URL.Path != "/v4/organization/analytics" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 
@@ -95,7 +95,7 @@ func TestUsageHistoryStopsWhenBackendIgnoresPagination(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
-		if r.URL.Path != "/v4/user/analytics" {
+		if r.URL.Path != "/v4/organization/analytics" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 
@@ -128,7 +128,7 @@ func TestUsageHistoryStopsWhenBackendIgnoresPagination(t *testing.T) {
 
 func TestUsageRPSBuildsTimeSeriesFromHistory(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v4/user/analytics" {
+		if r.URL.Path != "/v4/organization/analytics" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 

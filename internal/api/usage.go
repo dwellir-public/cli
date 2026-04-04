@@ -150,13 +150,12 @@ func (u *UsageAPI) History(interval string, from string, to string, apiKey strin
 	maxRows := 50000
 	for {
 		var page []UsageHistory
-		if err := u.client.Post("/v4/user/analytics", body, &page); err != nil {
+		if err := u.client.Post("/v4/organization/analytics", body, &page); err != nil {
 			return nil, err
 		}
 		history = append(history, page...)
-		// Marly currently ignores limit/offset for this endpoint and may return the
-		// full result set in one response. In that case, do not keep paginating and
-		// duplicating the same rows until the client-side safety cap is hit.
+		// Defensive guard: if the backend returns more rows than requested, do not
+		// keep paginating and duplicating the same page until the client-side cap.
 		if len(page) > body.Limit {
 			break
 		}
