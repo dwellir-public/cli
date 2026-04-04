@@ -150,10 +150,15 @@ func (u *UsageAPI) History(interval string, from string, to string, apiKey strin
 	maxRows := 50000
 	for {
 		var page []UsageHistory
-		if err := u.client.Post("/v4/user/analytics", body, &page); err != nil {
+		if err := u.client.Post("/v4/organization/analytics", body, &page); err != nil {
 			return nil, err
 		}
 		history = append(history, page...)
+		// Defensive guard: if the backend returns more rows than requested, do not
+		// keep paginating and duplicating the same page until the client-side cap.
+		if len(page) > body.Limit {
+			break
+		}
 		if len(page) < body.Limit || len(history) >= maxRows {
 			break
 		}

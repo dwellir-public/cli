@@ -10,7 +10,7 @@ import (
 
 func TestUsageHistoryRequestShape(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v4/user/analytics" {
+		if r.URL.Path != "/v4/organization/analytics" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 
@@ -58,7 +58,7 @@ func TestUsageHistoryRequestShape(t *testing.T) {
 
 func TestUsageHistoryMapsStartTimeToTimestamp(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v4/user/analytics" {
+		if r.URL.Path != "/v4/organization/analytics" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 
@@ -91,9 +91,44 @@ func TestUsageHistoryMapsStartTimeToTimestamp(t *testing.T) {
 	}
 }
 
+func TestUsageHistoryStopsWhenBackendIgnoresPagination(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/v4/organization/analytics" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		payload := make([]map[string]interface{}, 0, 1200)
+		for i := 0; i < 1200; i++ {
+			payload = append(payload, map[string]interface{}{
+				"start_time": "2026-02-27T00:00:00Z",
+				"domain":     "api-base-mainnet.n.dwellir.com",
+				"method":     "eth_chainId",
+				"requests":   1,
+				"responses":  1,
+			})
+		}
+		_ = json.NewEncoder(w).Encode(payload)
+	}))
+	defer server.Close()
+
+	api := NewUsageAPI(NewClient(server.URL, "token"))
+	items, err := api.History("day", "", "", "", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 1200 {
+		t.Fatalf("expected single unpaginated response of 1200 rows, got %d", len(items))
+	}
+	if requests != 1 {
+		t.Fatalf("expected one request when backend ignores pagination, got %d", requests)
+	}
+}
+
 func TestUsageRPSBuildsTimeSeriesFromHistory(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v4/user/analytics" {
+		if r.URL.Path != "/v4/organization/analytics" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 
