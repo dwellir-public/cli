@@ -154,6 +154,12 @@ func (u *UsageAPI) History(interval string, from string, to string, apiKey strin
 			return nil, err
 		}
 		history = append(history, page...)
+		// Marly currently ignores limit/offset for this endpoint and may return the
+		// full result set in one response. In that case, do not keep paginating and
+		// duplicating the same rows until the client-side safety cap is hit.
+		if len(page) > body.Limit {
+			break
+		}
 		if len(page) < body.Limit || len(history) >= maxRows {
 			break
 		}
