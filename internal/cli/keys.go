@@ -125,11 +125,16 @@ var keysDeleteCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
-		err = api.NewKeysAPI(client).Delete(args[0])
+		result, err := api.NewKeysAPI(client).Delete(args[0])
 		if err != nil {
 			return formatCommandError(err)
 		}
-		return getFormatter().Success("keys.delete", map[string]string{"key": args[0], "status": "deleted"})
+		payload := map[string]interface{}{"key": args[0], "status": "deleted"}
+		if result.CleanupPending {
+			payload["status"] = "cleanup_pending"
+			payload["unreachable_endpoints"] = result.UnreachableEndpoints
+		}
+		return getFormatter().Success("keys.delete", payload)
 	},
 }
 

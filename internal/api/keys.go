@@ -19,6 +19,11 @@ type APIKey struct {
 	UpdatedAt    string `json:"updated_at"`
 }
 
+type DeleteKeyResult struct {
+	CleanupPending       bool     `json:"cleanup_pending"`
+	UnreachableEndpoints []string `json:"unreachable_endpoints,omitempty"`
+}
+
 type CreateKeyInput struct {
 	Name         string `json:"name,omitempty"`
 	DailyQuota   *int   `json:"daily_quota,omitempty"`
@@ -92,8 +97,13 @@ func (k *KeysAPI) Update(apiKey string, input UpdateKeyInput) (*APIKey, error) {
 	return &key, err
 }
 
-func (k *KeysAPI) Delete(apiKey string) error {
-	return k.client.Delete(fmt.Sprintf("%s/%s", apiKeysBasePath, apiKey), nil)
+func (k *KeysAPI) Delete(apiKey string) (*DeleteKeyResult, error) {
+	result := &DeleteKeyResult{}
+	err := k.client.Delete(fmt.Sprintf("%s/%s", apiKeysBasePath, apiKey), result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (k *KeysAPI) Enable(apiKey string) (*APIKey, error) {
