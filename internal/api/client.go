@@ -86,6 +86,14 @@ func (c *Client) Delete(path string, result interface{}) error {
 	return c.do(req, result)
 }
 
+func (c *Client) DeleteWithStatus(path string, result interface{}) (int, error) {
+	req, err := http.NewRequest(http.MethodDelete, c.baseURL+path, nil)
+	if err != nil {
+		return 0, fmt.Errorf("creating request: %w", err)
+	}
+	return c.doWithStatus(req, result)
+}
+
 func (c *Client) Patch(path string, body interface{}, result interface{}) error {
 	var bodyReader io.Reader
 	if body != nil {
@@ -107,13 +115,18 @@ func (c *Client) Patch(path string, body interface{}, result interface{}) error 
 }
 
 func (c *Client) do(req *http.Request, result interface{}) error {
+	_, err := c.doWithStatus(req, result)
+	return err
+}
+
+func (c *Client) doWithStatus(req *http.Request, result interface{}) (int, error) {
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "dwellir-cli")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return 0, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -123,11 +136,11 @@ func (c *Client) do(req *http.Request, result interface{}) error {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("reading response: %w", err)
+		return resp.StatusCode, fmt.Errorf("reading response: %w", err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return &APIError{
+		return resp.StatusCode, &APIError{
 			StatusCode: resp.StatusCode,
 			Body:       string(body),
 		}
@@ -135,8 +148,8 @@ func (c *Client) do(req *http.Request, result interface{}) error {
 
 	if result != nil && len(body) > 0 {
 		if err := json.Unmarshal(body, result); err != nil {
-			return fmt.Errorf("parsing response: %w", err)
+			return resp.StatusCode, fmt.Errorf("parsing response: %w", err)
 		}
 	}
-	return nil
+	return resp.StatusCode, nil
 }
