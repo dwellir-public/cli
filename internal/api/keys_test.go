@@ -218,9 +218,6 @@ func TestDeleteKey(t *testing.T) {
 	if result.CleanupPending {
 		t.Fatal("expected cleanup pending to be false")
 	}
-	if len(result.UnreachableEndpoints) != 0 {
-		t.Fatalf("expected no unreachable endpoints, got %v", result.UnreachableEndpoints)
-	}
 
 	if gotMethod != http.MethodDelete {
 		t.Fatalf("expected DELETE, got %s", gotMethod)
@@ -239,7 +236,7 @@ func TestDeleteKeyReturnsCleanupPendingDetails(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusAccepted)
-		if err := json.NewEncoder(w).Encode(DeleteKeyResult{
+		if err := json.NewEncoder(w).Encode(deleteKeyResponse{
 			CleanupPending:       true,
 			UnreachableEndpoints: []string{"http://dead-haproxy:5555"},
 		}); err != nil {
@@ -258,8 +255,44 @@ func TestDeleteKeyReturnsCleanupPendingDetails(t *testing.T) {
 	if !result.CleanupPending {
 		t.Fatal("expected cleanup pending to be true")
 	}
-	if got, want := result.UnreachableEndpoints, []string{"http://dead-haproxy:5555"}; len(got) != len(want) || got[0] != want[0] {
-		t.Fatalf("unexpected unreachable endpoints: %v", got)
+}
+
+func TestDeleteKeyTreatsEmptyAcceptedResponseAsCleanupPending(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "token")
+	ka := NewKeysAPI(client)
+
+	result, err := ka.Delete("abc-123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.CleanupPending {
+		t.Fatal("expected cleanup pending to be true")
+	}
+}
+
+func TestDeleteKeyReturnsAPIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"detail":"API key not found"}`, http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "token")
+	ka := NewKeysAPI(client)
+
+	result, err := ka.Delete("missing")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if result != nil {
+		t.Fatalf("expected nil result on error, got %#v", result)
 	}
 }
 

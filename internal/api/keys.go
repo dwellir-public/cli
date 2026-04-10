@@ -20,6 +20,10 @@ type APIKey struct {
 }
 
 type DeleteKeyResult struct {
+	CleanupPending bool `json:"cleanup_pending"`
+}
+
+type deleteKeyResponse struct {
 	CleanupPending       bool     `json:"cleanup_pending"`
 	UnreachableEndpoints []string `json:"unreachable_endpoints,omitempty"`
 }
@@ -98,12 +102,14 @@ func (k *KeysAPI) Update(apiKey string, input UpdateKeyInput) (*APIKey, error) {
 }
 
 func (k *KeysAPI) Delete(apiKey string) (*DeleteKeyResult, error) {
-	result := &DeleteKeyResult{}
-	err := k.client.Delete(fmt.Sprintf("%s/%s", apiKeysBasePath, apiKey), result)
+	result := &deleteKeyResponse{}
+	statusCode, err := k.client.DeleteWithStatus(fmt.Sprintf("%s/%s", apiKeysBasePath, apiKey), result)
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return &DeleteKeyResult{
+		CleanupPending: result.CleanupPending || statusCode == 202,
+	}, nil
 }
 
 func (k *KeysAPI) Enable(apiKey string) (*APIKey, error) {

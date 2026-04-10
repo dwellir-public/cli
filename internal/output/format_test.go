@@ -131,6 +131,27 @@ func TestHumanWriteMapDoesNotShowGenericHeaders(t *testing.T) {
 	}
 }
 
+func TestJSONKeysDeleteCleanupPendingDoesNotExposeEndpoints(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewJSONFormatter(&buf)
+
+	err := f.Success("keys.delete", map[string]interface{}{
+		"key":    "abc-123",
+		"status": "cleanup_pending",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, `"status":"cleanup_pending"`) {
+		t.Fatalf("expected cleanup_pending status, got:\n%s", got)
+	}
+	if strings.Contains(got, "unreachable_endpoints") {
+		t.Fatalf("did not expect unreachable_endpoints in output, got:\n%s", got)
+	}
+}
+
 func TestHumanDocsGetMarkdown(t *testing.T) {
 	var buf bytes.Buffer
 	f := NewHumanFormatter(&buf)
