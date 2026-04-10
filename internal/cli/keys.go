@@ -129,13 +129,16 @@ var keysDeleteCmd = &cobra.Command{
 		if err != nil {
 			return formatCommandError(err)
 		}
-		payload := map[string]interface{}{"key": args[0], "status": "deleted"}
-		if result.CleanupPending {
-			payload["status"] = "cleanup_pending"
-			payload["unreachable_endpoints"] = result.UnreachableEndpoints
-		}
-		return getFormatter().Success("keys.delete", payload)
+		return getFormatter().Success("keys.delete", deleteSuccessPayload(args[0], result))
 	},
+}
+
+func deleteSuccessPayload(key string, result *api.DeleteKeyResult) map[string]interface{} {
+	payload := map[string]interface{}{"key": key, "status": "deleted"}
+	if result != nil && result.CleanupPending {
+		payload["status"] = "cleanup_pending"
+	}
+	return payload
 }
 
 var keysEnableCmd = &cobra.Command{
