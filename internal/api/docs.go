@@ -151,7 +151,9 @@ func (d *DocsAPI) fetchText(rawURL string) (string, int, error) {
 	if err != nil {
 		return "", 0, fmt.Errorf("creating request: %w", err)
 	}
-	req.Header.Set("Accept", "text/markdown, text/plain;q=0.9, */*;q=0.1")
+	// The docs site now serves markdown routes correctly for plain-text requests,
+	// while explicit text/markdown requests are rewritten through llms middleware.
+	req.Header.Set("Accept", "text/plain, */*;q=0.1")
 	req.Header.Set("User-Agent", "dwellir-cli")
 
 	resp, err := d.httpClient.Do(req)

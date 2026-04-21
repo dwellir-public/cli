@@ -148,3 +148,58 @@ func TestDocsGetNotFoundReturnsTypedError(t *testing.T) {
 		t.Fatalf("expected ErrDocsPageNotFound, got %v", err)
 	}
 }
+
+func TestDocsListAvoidsMarkdownAcceptRewrite(t *testing.T) {
+	llms := `# Dwellir Documentation
+
+## Hyperliquid
+- [Historical Data](https://www.dwellir.com/docs/hyperliquid/historical-data): Query historical market data.
+`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/docs/llms.txt" {
+			http.NotFound(w, r)
+			return
+		}
+		if strings.Contains(r.Header.Get("Accept"), "text/markdown") {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(llms))
+	}))
+	defer server.Close()
+
+	docs := NewDocsAPIWithURLs(server.URL+"/docs/llms.txt", server.URL+"/docs", server.Client())
+	entries, err := docs.List()
+	if err != nil {
+		t.Fatalf("unexpected list error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+}
+
+func TestDocsGetAvoidsMarkdownAcceptRewrite(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/docs/hyperliquid.md":
+			if strings.Contains(r.Header.Get("Accept"), "text/markdown") {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write([]byte("# Hyperliquid\n\nUse the docs endpoint."))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	docs := NewDocsAPIWithURLs(server.URL+"/docs/llms.txt", server.URL+"/docs", server.Client())
+	page, err := docs.Get("hyperliquid")
+	if err != nil {
+		t.Fatalf("unexpected get error: %v", err)
+	}
+	if page.Title != "Hyperliquid" {
+		t.Fatalf("expected title Hyperliquid, got %q", page.Title)
+	}
+}
