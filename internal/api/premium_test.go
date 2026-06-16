@@ -8,6 +8,7 @@ import (
 
 func TestAccountInfoUnmarshalPremiumEndpointStateString(t *testing.T) {
 	raw := `{
+		"uid": "acct-123",
 		"name": "Acme",
 		"premiumEndpointState": "[{\"hostSlug\":\"api-hyperliquid-mainnet-orderbook\",\"status\":\"trial-active\",\"trialEndsAt\":\"2026-03-01T00:00:00Z\"}]",
 		"currentSubscription": {
@@ -25,6 +26,9 @@ func TestAccountInfoUnmarshalPremiumEndpointStateString(t *testing.T) {
 	var info AccountInfo
 	if err := json.Unmarshal([]byte(raw), &info); err != nil {
 		t.Fatalf("failed to unmarshal account info: %v", err)
+	}
+	if info.UID != "acct-123" {
+		t.Fatalf("expected account uid acct-123, got %q", info.UID)
 	}
 
 	if len(info.PremiumEndpointState) != 1 {

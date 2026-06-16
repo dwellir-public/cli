@@ -10,21 +10,32 @@ import (
 )
 
 var (
-	client    posthog.Client
+	client    posthogClient
 	userID    string
 	orgID     string
+	orgName   string
 	deviceID  string
 	anonymous bool
 	version   string
 )
 
+type posthogClient interface {
+	posthog.EnqueueClient
+	Close() error
+}
+
 var posthogAPIKey = ""
 var posthogEndpoint = "https://eu.i.posthog.com"
 
-func Init(ver string, user string, org string, device string, anon bool) {
+func Enabled() bool {
+	return posthogAPIKey != "" || strings.TrimSpace(os.Getenv("DWELLIR_POSTHOG_KEY")) != ""
+}
+
+func Init(ver string, user string, org string, organizationName string, device string, anon bool) {
 	version = ver
 	userID = user
 	orgID = org
+	orgName = organizationName
 	deviceID = device
 	anonymous = anon
 
@@ -83,6 +94,25 @@ func baseProperties() posthog.Properties {
 	if !anonymous && orgID != "" {
 		props.Set("org_id", orgID)
 	}
+	if !anonymous && orgName != "" {
+		props.Set("org_name", orgName)
+	}
+	return props
+}
+
+func groups() posthog.Groups {
+	if anonymous || orgID == "" {
+		return nil
+	}
+	return posthog.NewGroups().Set("organization", orgID)
+}
+
+func groupProperties() posthog.Properties {
+	props := posthog.NewProperties()
+	if orgName != "" {
+		props.Set("name", orgName)
+	}
+	props.Set("version", version)
 	return props
 }
 
@@ -103,6 +133,14 @@ func Identify(extra map[string]interface{}) {
 		DistinctId: distinctID(),
 		Properties: props,
 	})
+	if !anonymous && orgID != "" {
+		_ = client.Enqueue(posthog.GroupIdentify{
+			Type:       "organization",
+			Key:        orgID,
+			DistinctId: distinctID(),
+			Properties: groupProperties(),
+		})
+	}
 }
 
 func TrackCommand(command string, extra map[string]interface{}) {
@@ -117,6 +155,7 @@ func TrackCommand(command string, extra map[string]interface{}) {
 		DistinctId: distinctID(),
 		Event:      "cli_command",
 		Properties: props,
+		Groups:     groups(),
 	})
 }
 
@@ -128,6 +167,7 @@ func TrackInstall(method string) {
 		DistinctId: distinctID(),
 		Event:      "cli_installed",
 		Properties: baseProperties().Set("install_method", method),
+		Groups:     groups(),
 	})
 }
 
@@ -141,6 +181,7 @@ func TrackAuth(method string, success bool) {
 		Properties: baseProperties().
 			Set("method", method).
 			Set("success", success),
+		Groups: groups(),
 	})
 }
 
@@ -154,6 +195,7 @@ func TrackUpdate(fromVersion string, toVersion string) {
 		Properties: baseProperties().
 			Set("from_version", fromVersion).
 			Set("to_version", toVersion),
+		Groups: groups(),
 	})
 }
 

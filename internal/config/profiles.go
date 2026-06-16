@@ -8,10 +8,14 @@ import (
 )
 
 type Profile struct {
-	Name  string `json:"name"`
-	Token string `json:"token"`
-	Org   string `json:"org,omitempty"`
-	User  string `json:"user,omitempty"`
+	Name      string `json:"name"`
+	Token     string `json:"token"`
+	Org       string `json:"org,omitempty"`
+	User      string `json:"user,omitempty"`
+	UserEmail string `json:"user_email,omitempty"`
+	UserName  string `json:"user_name,omitempty"`
+	OrgID     string `json:"org_id,omitempty"`
+	OrgName   string `json:"org_name,omitempty"`
 }
 
 type dwellirJSON struct {

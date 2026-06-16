@@ -157,12 +157,7 @@ func newAPIClient() (*api.Client, error) {
 		return nil, err
 	}
 
-	baseURL := os.Getenv("DWELLIR_API_URL")
-	if baseURL == "" {
-		baseURL = "https://dashboard.dwellir.com/marly-api"
-	}
-
-	client := api.NewClient(baseURL, token)
+	client := api.NewClient(resolveAPIBaseURL(), token)
 
 	client.OnTokenRefresh = func(newToken string) {
 		ctx := resolveProfileContext(profile, cwd, configDir)

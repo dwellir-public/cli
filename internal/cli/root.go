@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/dwellir-public/cli/internal/api"
+	"github.com/dwellir-public/cli/internal/auth"
 	"github.com/dwellir-public/cli/internal/config"
 	"github.com/dwellir-public/cli/internal/output"
 	"github.com/dwellir-public/cli/internal/telemetry"
@@ -34,7 +36,7 @@ var stdoutIsTerminal = func() bool {
 }
 
 type telemetryTracker interface {
-	Init(ver string, user string, org string, device string, anon bool)
+	Init(ver string, user string, org string, orgName string, device string, anon bool)
 	Identify(extra map[string]interface{})
 	TrackCommand(command string, extra map[string]interface{})
 	Close()
@@ -42,8 +44,8 @@ type telemetryTracker interface {
 
 type posthogTelemetryTracker struct{}
 
-func (posthogTelemetryTracker) Init(ver string, user string, org string, device string, anon bool) {
-	telemetry.Init(ver, user, org, device, anon)
+func (posthogTelemetryTracker) Init(ver string, user string, org string, orgName string, device string, anon bool) {
+	telemetry.Init(ver, user, org, orgName, device, anon)
 }
 
 func (posthogTelemetryTracker) Identify(extra map[string]interface{}) {
@@ -291,34 +293,127 @@ func initializeTelemetryFromArgs(args []string) {
 
 func initializeTelemetry(profileOverride string, anon bool) {
 	configDir := config.DefaultConfigDir()
-	user, org, profileName := resolveTelemetryIdentity(configDir, profileOverride)
+	identity := telemetryIdentity{ProfileName: resolvedProfileName(configDir, profileOverride)}
+	if !anon && telemetry.Enabled() {
+		identity = resolveTelemetryIdentity(configDir, profileOverride)
+	} else if !anon {
+		identity = resolveStoredTelemetryIdentity(configDir, profileOverride)
+	}
 	deviceID := ensureTelemetryDeviceID(configDir)
-	telemetryClient.Init(Version, user, org, deviceID, anon)
-	telemetryClient.Identify(map[string]interface{}{
-		"profile":         profileName,
-		"is_anonymous":    anon || user == "",
+	telemetryClient.Init(Version, identity.UserID, identity.OrgID, identity.OrgName, deviceID, anon)
+	props := map[string]interface{}{
+		"profile":         identity.ProfileName,
+		"is_anonymous":    anon || identity.UserID == "",
 		"agent_env":       isAgentEnvironment(),
 		"stdout_terminal": stdoutIsTerminal(),
-	})
+	}
+	if !anon && identity.UserEmail != "" {
+		props["email"] = identity.UserEmail
+	}
+	if !anon && identity.UserName != "" {
+		props["name"] = identity.UserName
+	}
+	if !anon && identity.OrgID != "" {
+		props["org_id"] = identity.OrgID
+	}
+	if !anon && identity.OrgName != "" {
+		props["org_name"] = identity.OrgName
+	}
+	telemetryClient.Identify(props)
 	currentRun.telemetryOn = true
-	currentRun.identified = user != ""
-	currentRun.anonymous = anon || user == ""
+	currentRun.identified = identity.UserID != ""
+	currentRun.anonymous = anon || identity.UserID == ""
 }
 
-func resolveTelemetryIdentity(configDir string, profileOverride string) (user string, org string, profileName string) {
-	cwd, _ := os.Getwd()
+type telemetryIdentity struct {
+	ProfileName string
+	UserID      string
+	UserEmail   string
+	UserName    string
+	OrgID       string
+	OrgName     string
+}
+
+func resolveTelemetryIdentity(configDir string, profileOverride string) telemetryIdentity {
+	identity := resolveStoredTelemetryIdentity(configDir, profileOverride)
+
+	token, err := auth.ResolveToken("", resolvedProfileName(configDir, profileOverride), currentWorkingDir(), configDir)
+	if err != nil {
+		return identity
+	}
+
+	client := api.NewClient(resolveAPIBaseURL(), token)
+	user, userErr := api.NewUserAPI(client).Current()
+	account, accountErr := api.NewAccountAPI(client).Info()
+
+	if userErr == nil && user != nil {
+		identity.UserID = strings.TrimSpace(user.ID)
+		identity.UserEmail = strings.TrimSpace(user.Email)
+		identity.UserName = strings.TrimSpace(user.Name)
+	}
+	if accountErr == nil && account != nil {
+		identity.OrgID = strings.TrimSpace(account.UID)
+		identity.OrgName = strings.TrimSpace(account.Name)
+	}
+
+	if p, err := config.LoadProfile(configDir, identity.ProfileName); err == nil && p != nil && (userErr == nil || accountErr == nil) {
+		p.User = identity.UserID
+		p.UserEmail = identity.UserEmail
+		p.UserName = identity.UserName
+		p.OrgID = identity.OrgID
+		p.OrgName = identity.OrgName
+		if p.Org == "" {
+			p.Org = identity.OrgName
+		}
+		_ = config.SaveProfile(configDir, p)
+	}
+	return identity
+}
+
+func resolveStoredTelemetryIdentity(configDir string, profileOverride string) telemetryIdentity {
+	profileName := resolvedProfileName(configDir, profileOverride)
+	identity := telemetryIdentity{ProfileName: profileName}
+
+	p, err := config.LoadProfile(configDir, profileName)
+	if err != nil || p == nil {
+		return identity
+	}
+
+	identity.UserID = strings.TrimSpace(p.User)
+	identity.UserEmail = strings.TrimSpace(p.UserEmail)
+	identity.UserName = strings.TrimSpace(p.UserName)
+	identity.OrgID = strings.TrimSpace(p.OrgID)
+	identity.OrgName = strings.TrimSpace(p.OrgName)
+	if identity.OrgID == "" {
+		identity.OrgID = strings.TrimSpace(p.Org)
+	}
+	if identity.OrgName == "" {
+		identity.OrgName = strings.TrimSpace(p.Org)
+	}
+	return identity
+}
+
+func resolvedProfileName(configDir string, profileOverride string) string {
+	cwd := currentWorkingDir()
 	envProfile := os.Getenv("DWELLIR_PROFILE")
 	resolvedProfile := profile
 	if strings.TrimSpace(profileOverride) != "" {
 		resolvedProfile = strings.TrimSpace(profileOverride)
 	}
-	profileName = config.ResolveProfileName(resolvedProfile, envProfile, cwd, configDir)
+	return config.ResolveProfileName(resolvedProfile, envProfile, cwd, configDir)
+}
 
-	p, err := config.LoadProfile(configDir, profileName)
-	if err != nil || p == nil {
-		return "", "", profileName
+func currentWorkingDir() string {
+	cwd, _ := os.Getwd()
+	return cwd
+}
+
+func resolveAPIBaseURL() string {
+	baseURL := os.Getenv("DWELLIR_API_URL")
+	if baseURL == "" {
+		baseURL = "https://dashboard.dwellir.com/marly-api"
 	}
-	return strings.TrimSpace(p.User), strings.TrimSpace(p.Org), profileName
+	return baseURL
 }
 
 func ensureTelemetryDeviceID(configDir string) string {

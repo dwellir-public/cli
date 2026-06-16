@@ -11,6 +11,10 @@ import (
 
 func TestUsageHistoryShowsAPIErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v3/user/subscription" {
+			_, _ = w.Write([]byte(`{"id":4,"name":"Scale","apiKeysLimit":100}`))
+			return
+		}
 		if r.URL.Path == "/v4/organization/analytics" {
 			w.WriteHeader(http.StatusForbidden)
 			_, _ = w.Write([]byte(`{"detail":"forbidden"}`))
