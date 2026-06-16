@@ -1,10 +1,16 @@
 package cli
 
 import (
+	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+
+	"github.com/dwellir-public/cli/internal/config"
 )
 
 func TestResolvedOutputFormat_DefaultHuman(t *testing.T) {
@@ -227,12 +233,19 @@ type telemetryCall struct {
 }
 
 type fakeTelemetry struct {
-	trackCalls []telemetryCall
+	identifyCalls []map[string]interface{}
+	trackCalls    []telemetryCall
 }
 
-func (f *fakeTelemetry) Init(string, string, string, string, bool) {}
+func (f *fakeTelemetry) Init(string, string, string, string, string, bool) {}
 
-func (f *fakeTelemetry) Identify(map[string]interface{}) {}
+func (f *fakeTelemetry) Identify(extra map[string]interface{}) {
+	cp := map[string]interface{}{}
+	for k, v := range extra {
+		cp[k] = v
+	}
+	f.identifyCalls = append(f.identifyCalls, cp)
+}
 
 func (f *fakeTelemetry) TrackCommand(command string, extra map[string]interface{}) {
 	cp := map[string]interface{}{}
@@ -359,5 +372,148 @@ func TestExecute_TracksUnknownCommandError_WithProfileFlagValue(t *testing.T) {
 	}
 	if unknown, _ := call.extra["unknown_command"].(string); unknown != "get" {
 		t.Fatalf("unknown_command = %q, want %q", unknown, "get")
+	}
+}
+
+func TestResolveTelemetryIdentityFetchesAndCachesTokenIdentity(t *testing.T) {
+	configDir := t.TempDir()
+	if err := config.SaveProfile(configDir, &config.Profile{Name: "default", Token: "token"}); err != nil {
+		t.Fatalf("save profile: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer token" {
+			t.Fatalf("Authorization = %q, want Bearer token", got)
+		}
+		switch r.URL.Path {
+		case "/v4/user":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"id":    "user-123",
+				"name":  "Ada Lovelace",
+				"email": "ada@example.com",
+			})
+		case "/v4/organization/information/outseta":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"uid":  "acct-123",
+				"name": "Acme",
+			})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("DWELLIR_API_URL", server.URL)
+
+	identity := resolveTelemetryIdentity(configDir, "")
+
+	if identity.ProfileName != "default" {
+		t.Fatalf("profile = %q, want default", identity.ProfileName)
+	}
+	if identity.UserID != "user-123" {
+		t.Fatalf("user id = %q, want user-123", identity.UserID)
+	}
+	if identity.UserEmail != "ada@example.com" {
+		t.Fatalf("user email = %q, want ada@example.com", identity.UserEmail)
+	}
+	if identity.UserName != "Ada Lovelace" {
+		t.Fatalf("user name = %q, want Ada Lovelace", identity.UserName)
+	}
+	if identity.OrgID != "acct-123" {
+		t.Fatalf("org id = %q, want acct-123", identity.OrgID)
+	}
+	if identity.OrgName != "Acme" {
+		t.Fatalf("org name = %q, want Acme", identity.OrgName)
+	}
+
+	profile, err := config.LoadProfile(configDir, "default")
+	if err != nil {
+		t.Fatalf("load profile: %v", err)
+	}
+	if profile.User != "user-123" || profile.UserEmail != "ada@example.com" || profile.UserName != "Ada Lovelace" {
+		t.Fatalf("cached user identity = %#v", profile)
+	}
+	if profile.OrgID != "acct-123" || profile.OrgName != "Acme" {
+		t.Fatalf("cached org identity = %#v", profile)
+	}
+}
+
+func TestInitializeTelemetrySkipsIdentityLookupWhenTelemetryDisabled(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("DWELLIR_CONFIG_DIR", configDir)
+	if err := config.SaveProfile(configDir, &config.Profile{Name: "default", Token: "token"}); err != nil {
+		t.Fatalf("save profile: %v", err)
+	}
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	t.Setenv("DWELLIR_API_URL", server.URL)
+	t.Setenv("DWELLIR_POSTHOG_KEY", "")
+
+	oldTelemetry := telemetryClient
+	telemetryClient = &fakeTelemetry{}
+	t.Cleanup(func() { telemetryClient = oldTelemetry })
+
+	initializeTelemetry("", false)
+
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("identity lookup requests = %d, want 0", got)
+	}
+}
+
+func TestInitializeTelemetrySkipsIdentityLookupAndPropsWhenAnonymous(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("DWELLIR_CONFIG_DIR", configDir)
+	if err := config.SaveProfile(configDir, &config.Profile{Name: "default", Token: "token"}); err != nil {
+		t.Fatalf("save profile: %v", err)
+	}
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		switch r.URL.Path {
+		case "/v4/user":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"id":    "user-123",
+				"name":  "Ada Lovelace",
+				"email": "ada@example.com",
+			})
+		case "/v4/organization/information/outseta":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"uid":  "acct-123",
+				"name": "Acme",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("DWELLIR_API_URL", server.URL)
+	t.Setenv("DWELLIR_POSTHOG_KEY", "test-key")
+
+	oldTelemetry := telemetryClient
+	fake := &fakeTelemetry{}
+	telemetryClient = fake
+	t.Cleanup(func() { telemetryClient = oldTelemetry })
+
+	initializeTelemetry("", true)
+
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("identity lookup requests = %d, want 0", got)
+	}
+	if len(fake.identifyCalls) != 1 {
+		t.Fatalf("identify calls = %d, want 1", len(fake.identifyCalls))
+	}
+	props := fake.identifyCalls[0]
+	for _, key := range []string{"email", "name", "org_id", "org_name"} {
+		if _, ok := props[key]; ok {
+			t.Fatalf("anonymous identify props included %q: %#v", key, props)
+		}
+	}
+	if props["is_anonymous"] != true {
+		t.Fatalf("is_anonymous = %#v, want true", props["is_anonymous"])
 	}
 }

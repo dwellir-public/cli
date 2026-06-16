@@ -1,17 +1,17 @@
 module github.com/dwellir-public/cli
 
-go 1.25.0
+go 1.26.3
 
 require (
-	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/creativeprojects/go-selfupdate v1.5.2
 	github.com/google/uuid v1.6.0
-	github.com/jedib0t/go-pretty/v6 v6.7.8
-	github.com/posthog/posthog-go v1.11.2
+	github.com/jedib0t/go-pretty/v6 v6.8.1
+	github.com/posthog/posthog-go v1.15.0
 	github.com/spf13/cobra v1.10.2
 	github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c
-	golang.org/x/term v0.41.0
+	golang.org/x/term v0.44.0
 )
 
 require (
@@ -55,7 +55,7 @@ require (
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect

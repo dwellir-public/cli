@@ -6,6 +6,7 @@ import (
 )
 
 type AccountInfo struct {
+	UID                  string                     `json:"uid,omitempty"`
 	Name                 string                     `json:"name"`
 	ServerLocation       string                     `json:"idealServerLocation,omitempty"`
 	TaxID                string                     `json:"tax_id,omitempty"`
