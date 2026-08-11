@@ -2,30 +2,32 @@ package api
 
 import (
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type premiumEndpointRule struct {
-	hostSlug string
-	addOnUID string
+	hostSlug  string
+	chainName string
+	addOnUID  string
 }
 
 // premiumEndpointRules mirrors frontend/src/config/locked-endpoints.ts. Neither
 // copy is served by an API yet, so they must be kept in sync by hand.
 var premiumEndpointRules = []premiumEndpointRule{
-	{hostSlug: "api-hyperliquid-mainnet-orderbook", addOnUID: "gWKew2Qp"},
-	{hostSlug: "api-hyperliquid-testnet-orderbook", addOnUID: "amRyMMWJ"},
-	{hostSlug: "api-hyperliquid-mainnet-grpc", addOnUID: "wQX7GZmK"},
-	{hostSlug: "api-hyperliquid-testnet-grpc", addOnUID: "pWrOoamn"},
-	{hostSlug: "api-asset-hub-kusama-sidecar", addOnUID: "79OaqZmE"},
-	{hostSlug: "api-asset-hub-polkadot-sidecar", addOnUID: "1Qp5KY9E"},
-	{hostSlug: "api-assethub-polkadot-sidecar", addOnUID: "1Qp5KY9E"},
-	{hostSlug: "api-assethub-kusama-sidecar", addOnUID: "79OaqZmE"},
-	{hostSlug: "api-kusama-sidecar", addOnUID: "y9gpzRWM"},
-	{hostSlug: "api-polkadot-sidecar", addOnUID: "E9L0oP9w"},
-	{hostSlug: "api-centrifuge-sidecar", addOnUID: "rm06Nk9X"},
-	{hostSlug: "api-kilt-sidecar", addOnUID: "z9MvOKW4"},
+	{hostSlug: "api-hyperliquid-mainnet-orderbook", chainName: "Hyperliquid Orderbook", addOnUID: "gWKew2Qp"},
+	{hostSlug: "api-hyperliquid-testnet-orderbook", chainName: "Hyperliquid Orderbook Testnet", addOnUID: "amRyMMWJ"},
+	{hostSlug: "api-hyperliquid-mainnet-grpc", chainName: "Hyperliquid gRPC Mainnet", addOnUID: "wQX7GZmK"},
+	{hostSlug: "api-hyperliquid-testnet-grpc", chainName: "Hyperliquid gRPC Testnet", addOnUID: "pWrOoamn"},
+	{hostSlug: "api-asset-hub-kusama-sidecar", chainName: "AssetHub Kusama Sidecar", addOnUID: "79OaqZmE"},
+	{hostSlug: "api-asset-hub-polkadot-sidecar", chainName: "AssetHub Polkadot Sidecar", addOnUID: "1Qp5KY9E"},
+	{hostSlug: "api-assethub-polkadot-sidecar", chainName: "AssetHub Polkadot Sidecar", addOnUID: "1Qp5KY9E"},
+	{hostSlug: "api-assethub-kusama-sidecar", chainName: "AssetHub Kusama Sidecar", addOnUID: "79OaqZmE"},
+	{hostSlug: "api-kusama-sidecar", chainName: "Kusama Sidecar", addOnUID: "y9gpzRWM"},
+	{hostSlug: "api-polkadot-sidecar", chainName: "Polkadot Sidecar", addOnUID: "E9L0oP9w"},
+	{hostSlug: "api-centrifuge-sidecar", chainName: "Centrifuge Sidecar", addOnUID: "rm06Nk9X"},
+	{hostSlug: "api-kilt-sidecar", chainName: "KILT Sidecar", addOnUID: "z9MvOKW4"},
 }
 
 func ApplyPremiumEndpointLabels(chains []Chain, account *AccountInfo) []Chain {
@@ -38,32 +40,8 @@ func ApplyPremiumEndpointLabels(chains []Chain, account *AccountInfo) []Chain {
 		rulesByHost[strings.ToLower(rule.hostSlug)] = rule
 	}
 
-	stateByHost := make(map[string]PremiumEndpointStateEntry)
-	activeAddOnUIDs := make(map[string]struct{})
+	stateByHost, activeAddOnUIDs := accountPremiumState(account)
 	now := time.Now().UTC()
-
-	if account != nil {
-		for _, entry := range account.PremiumEndpointState {
-			host := strings.ToLower(strings.TrimSpace(entry.HostSlug))
-			if host == "" {
-				continue
-			}
-			stateByHost[host] = entry
-		}
-
-		if account.CurrentSubscription != nil {
-			for _, addOn := range account.CurrentSubscription.SubscriptionAddOns {
-				if !isSubscriptionAddOnActive(addOn.EndDate, now) {
-					continue
-				}
-				uid := strings.ToLower(strings.TrimSpace(addOn.CanonicalAddOnUID()))
-				if uid == "" {
-					continue
-				}
-				activeAddOnUIDs[uid] = struct{}{}
-			}
-		}
-	}
 
 	for chainIdx := range chains {
 		for networkIdx := range chains[chainIdx].Networks {
@@ -93,17 +71,50 @@ func ApplyPremiumEndpointLabels(chains []Chain, account *AccountInfo) []Chain {
 
 func endpointHostSlug(httpsURL, wssURL string) string {
 	for _, raw := range []string{httpsURL, wssURL} {
-		parsed, err := url.Parse(raw)
-		if err != nil || parsed.Host == "" {
-			continue
+		if slug := NormalizeEndpointSlug(raw); slug != "" {
+			return slug
 		}
-		host := strings.ToLower(parsed.Hostname())
-		if host == "" {
-			continue
-		}
-		return strings.Split(host, ".")[0]
 	}
 	return ""
+}
+
+// NormalizeEndpointSlug turns a host slug, an FQDN, or a full endpoint URL into
+// the host slug the platform keys premium-endpoint entitlements by.
+//
+// The rule is marly's: the first DNS label of the hostname, lowercased
+// (pymarly/endpoint_entitlements.py:9-10, endpoint_fqdn_to_host_slug). All three
+// input shapes are accepted because a user reading `endpoints list` has a URL
+// on screen, not a slug.
+func NormalizeEndpointSlug(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+
+	if strings.Contains(value, "://") {
+		parsed, err := url.Parse(value)
+		if err != nil || parsed.Hostname() == "" {
+			return ""
+		}
+		value = parsed.Hostname()
+	}
+
+	// A bare "host/path" or "host:443" never reaches url.Parse above, so trim
+	// the path and port by hand.
+	if idx := strings.IndexAny(value, "/?#"); idx >= 0 {
+		value = value[:idx]
+	}
+	if idx := strings.LastIndex(value, ":"); idx >= 0 {
+		if _, err := strconv.Atoi(value[idx+1:]); err == nil {
+			value = value[:idx]
+		}
+	}
+
+	value = strings.Trim(value, ".")
+	if value == "" {
+		return ""
+	}
+	return strings.ToLower(strings.Split(value, ".")[0])
 }
 
 func resolvePremiumStatus(
