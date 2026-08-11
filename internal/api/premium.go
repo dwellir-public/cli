@@ -11,9 +11,13 @@ type premiumEndpointRule struct {
 	addOnUID string
 }
 
+// premiumEndpointRules mirrors frontend/src/config/locked-endpoints.ts. Neither
+// copy is served by an API yet, so they must be kept in sync by hand.
 var premiumEndpointRules = []premiumEndpointRule{
 	{hostSlug: "api-hyperliquid-mainnet-orderbook", addOnUID: "gWKew2Qp"},
+	{hostSlug: "api-hyperliquid-testnet-orderbook", addOnUID: "amRyMMWJ"},
 	{hostSlug: "api-hyperliquid-mainnet-grpc", addOnUID: "wQX7GZmK"},
+	{hostSlug: "api-hyperliquid-testnet-grpc", addOnUID: "pWrOoamn"},
 	{hostSlug: "api-asset-hub-kusama-sidecar", addOnUID: "79OaqZmE"},
 	{hostSlug: "api-asset-hub-polkadot-sidecar", addOnUID: "1Qp5KY9E"},
 	{hostSlug: "api-assethub-polkadot-sidecar", addOnUID: "1Qp5KY9E"},
