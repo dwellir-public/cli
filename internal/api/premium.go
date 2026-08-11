@@ -81,10 +81,16 @@ func endpointHostSlug(httpsURL, wssURL string) string {
 // NormalizeEndpointSlug turns a host slug, an FQDN, or a full endpoint URL into
 // the host slug the platform keys premium-endpoint entitlements by.
 //
-// The rule is marly's: the first DNS label of the hostname, lowercased
-// (pymarly/endpoint_entitlements.py:9-10, endpoint_fqdn_to_host_slug). All three
-// input shapes are accepted because a user reading `endpoints list` has a URL
-// on screen, not a slug.
+// Marly's rule is narrower: endpoint_fqdn_to_host_slug is exactly
+// `fqdn.split(".", 1)[0]` (pymarly/endpoint_entitlements.py:9-10). It takes the
+// first DNS label of an FQDN and nothing else, with no case folding and no URL
+// or port handling, because it only ever sees FQDNs out of the database.
+//
+// This is a superset of that. It agrees with marly on any lowercase FQDN, and
+// additionally strips a scheme, path, and port, and lowercases the result. The
+// extra handling is for CLI arguments: a user reading `endpoints list` has a
+// URL on screen, not a slug. The comparison targets are the lowercase slugs in
+// premiumEndpointRules, so folding case here is what makes those inputs match.
 func NormalizeEndpointSlug(raw string) string {
 	value := strings.TrimSpace(raw)
 	if value == "" {

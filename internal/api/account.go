@@ -27,12 +27,18 @@ type OutsetaAddOnProduct struct {
 	UIDLegacy string `json:"Uid,omitempty"`
 }
 
+// OutsetaSubscriptionAddOn mirrors marly's SubscriptionAddOn
+// (pymarly/outseta/models.py:78-90). UID is the add-on *instance* uid, which is
+// the key the cancel route takes.
 type OutsetaSubscriptionAddOn struct {
-	UID      string               `json:"uid,omitempty"`
-	Name     string               `json:"name,omitempty"`
-	AddOnUID string               `json:"addOnUid,omitempty"`
-	EndDate  string               `json:"endDate,omitempty"`
-	AddOn    *OutsetaAddOnProduct `json:"addOn,omitempty"`
+	UID         string               `json:"uid,omitempty"`
+	Name        string               `json:"name,omitempty"`
+	AddOnUID    string               `json:"addOnUid,omitempty"`
+	Quantity    *int                 `json:"quantity,omitempty"`
+	StartDate   string               `json:"startDate,omitempty"`
+	EndDate     string               `json:"endDate,omitempty"`
+	RenewalDate string               `json:"renewalDate,omitempty"`
+	AddOn       *OutsetaAddOnProduct `json:"addOn,omitempty"`
 }
 
 func (a OutsetaSubscriptionAddOn) CanonicalAddOnUID() string {

@@ -2,11 +2,16 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
+
+func intPtr(v int) *int { return &v }
 
 func TestNormalizeEndpointSlug(t *testing.T) {
 	tests := []struct {
@@ -288,6 +293,29 @@ func TestActiveAddOnsFromAccount(t *testing.T) {
 			}},
 		},
 		{
+			// Marly builds both responses from one model, so the fallback must
+			// not drop quantity, start date, or renewal date.
+			name: "carries every field marly provides",
+			account: &AccountInfo{CurrentSubscription: &CurrentSubscriptionWindow{
+				SubscriptionAddOns: []OutsetaSubscriptionAddOn{{
+					UID:         "inst-3",
+					Name:        "Orderbook",
+					AddOnUID:    "gWKew2Qp",
+					Quantity:    intPtr(2),
+					StartDate:   "2026-08-01T00:00:00Z",
+					RenewalDate: "2026-09-01T00:00:00Z",
+				}},
+			}},
+			want: []ActiveAddOn{{
+				InstanceUID: "inst-3",
+				AddOnUID:    "gWKew2Qp",
+				Name:        "Orderbook",
+				Quantity:    intPtr(2),
+				StartDate:   "2026-08-01T00:00:00Z",
+				RenewalDate: "2026-09-01T00:00:00Z",
+			}},
+		},
+		{
 			name: "reads the uid off the nested add-on product",
 			account: &AccountInfo{CurrentSubscription: &CurrentSubscriptionWindow{
 				SubscriptionAddOns: []OutsetaSubscriptionAddOn{
@@ -305,7 +333,9 @@ func TestActiveAddOnsFromAccount(t *testing.T) {
 				t.Fatalf("got %d add-ons, want %d: %+v", len(got), len(tt.want), got)
 			}
 			for i := range tt.want {
-				if got[i] != tt.want[i] {
+				// reflect.DeepEqual, not ==: ActiveAddOn holds a *int, and ==
+				// would compare pointer identity rather than quantity.
+				if !reflect.DeepEqual(got[i], tt.want[i]) {
 					t.Fatalf("add-on %d = %+v, want %+v", i, got[i], tt.want[i])
 				}
 			}
@@ -431,6 +461,71 @@ func TestAddonsAPIPaymentMethod(t *testing.T) {
 				t.Fatalf("expMonth = %q, want %q", method.ExpMonth, tt.wantExp)
 			}
 		})
+	}
+}
+
+// An empty 200 is not "no card on file". The client skips unmarshalling a
+// zero-length body, so without the raw-JSON read a truncated or proxy-mangled
+// response would silently report the account as having no payment method.
+func TestAddonsAPIPaymentMethodRejectsAnEmptyBody(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantMsg string
+	}{
+		// The client skips unmarshalling a zero-length body, so this case
+		// reaches the emptiness guard.
+		{name: "zero length", body: "", wantMsg: "payment method response was empty"},
+		// A whitespace-only body is non-zero length, so the client's own
+		// unmarshal rejects it first. Either way it is an error, never a
+		// silent "no card on file".
+		{name: "whitespace only", body: "   ", wantMsg: "unexpected end of JSON input"},
+		{name: "newline only", body: "\n", wantMsg: "unexpected end of JSON input"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			method, err := NewAddonsAPI(NewClient(server.URL, "test-token")).PaymentMethod()
+			if err == nil {
+				t.Fatalf("expected an error for body %q, got method %+v", tt.body, method)
+			}
+			if !strings.Contains(err.Error(), tt.wantMsg) {
+				t.Fatalf("error = %v, want it to contain %q", err, tt.wantMsg)
+			}
+		})
+	}
+}
+
+func TestAddonsAPIPaymentMethodSurfacesHTTPErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"detail":"Not found"}`))
+	}))
+	defer server.Close()
+
+	_, err := NewAddonsAPI(NewClient(server.URL, "test-token")).PaymentMethod()
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected *APIError, got %T (%v)", err, err)
+	}
+	if apiErr.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", apiErr.StatusCode)
+	}
+}
+
+func TestAddonsAPIPaymentMethodRejectsMalformedJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"brand":`))
+	}))
+	defer server.Close()
+
+	if _, err := NewAddonsAPI(NewClient(server.URL, "test-token")).PaymentMethod(); err == nil {
+		t.Fatal("expected an error for malformed JSON")
 	}
 }
 

@@ -86,10 +86,13 @@ var addonsStatusCmd = &cobra.Command{
 // billing route and falling back to the account payload.
 //
 // GET /v4/billing/addons/active is still cookie-only in marly, so a CLI token
-// gets 401 or 403 there. The account payload carries the same instance UIDs, so
-// the fallback keeps `addons status` useful. The substitution is reported as a
-// typed notice rather than hidden, because the fallback rows have no renewal
-// date and the caller needs to know why.
+// gets 401 or 403 there. Marly builds both responses from the same
+// SubscriptionAddOn model, so the account payload carries the same instances and
+// the same fields, and the fallback keeps `addons status` fully useful.
+//
+// The substitution is still reported as a typed notice rather than hidden. The
+// two sources can drift, and a caller comparing this output against the
+// dashboard needs to know which one answered.
 func resolveActiveAddOns(
 	addons *api.AddonsAPI,
 	account *api.AccountInfo,
@@ -107,7 +110,7 @@ func resolveActiveAddOns(
 	notice := api.AddonNotice{
 		Code:    "addons_active_unavailable",
 		Message: "The billing add-on route rejected this CLI token, so add-ons were read from your organization account instead.",
-		Help:    "GET /v4/billing/addons/active still requires a dashboard session. The fallback lists the same instance UIDs, but renewal dates are missing.",
+		Help:    "GET /v4/billing/addons/active still requires a dashboard session. The account reports the same add-on instances and fields, so this list should be complete.",
 	}
 	return api.ActiveAddOnsFromAccount(account), api.AddonsSourceAccount, []api.AddonNotice{notice}, nil
 }

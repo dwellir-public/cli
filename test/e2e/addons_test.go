@@ -18,16 +18,24 @@ const (
   {"uid":"misc-1","name":"Support Retainer","monthlyRate":1000.0}
 ]}`
 
+	// premiumEndpointState is an encoded JSON *string*, not an array. Marly
+	// declares it as Optional[str] (pymarly/outseta/models.py:502) and writes it
+	// back through encode_premium_state, so the stub must match that shape or it
+	// tests a payload marly never sends.
 	addonsAccountBody = `{
   "uid":"acct-123",
   "name":"Acme",
-  "premiumEndpointState":[
-    {"hostSlug":"api-hyperliquid-testnet-orderbook","status":"trial-active","trialEndsAt":"2099-01-01T00:00:00Z"},
-    {"hostSlug":"api-kusama-sidecar","status":"trial-expired"}
-  ],
+  "premiumEndpointState":"[{\"hostSlug\":\"api-hyperliquid-testnet-orderbook\",\"status\":\"trial-active\",\"trialEndsAt\":\"2099-01-01T00:00:00Z\"},{\"hostSlug\":\"api-kusama-sidecar\",\"status\":\"trial-expired\"}]",
   "currentSubscription":{
     "subscriptionAddOns":[
-      {"uid":"L9P6xpnm","name":"Hyperliquid Orderbook Service","addOnUid":"gWKew2Qp"}
+      {
+        "uid":"L9P6xpnm",
+        "name":"Hyperliquid Orderbook Service",
+        "addOnUid":"gWKew2Qp",
+        "quantity":2,
+        "startDate":"2026-08-01T00:00:00Z",
+        "renewalDate":"2026-09-01T00:00:00Z"
+      }
     ]
   }
 }`
@@ -283,6 +291,22 @@ func TestAddonsStatusFallsBackWhenTheBillingRouteRejectsTheCLIToken(t *testing.T
 			if first["instanceUid"] != "L9P6xpnm" {
 				t.Fatalf("the fallback must keep the instance uid, got %#v", first)
 			}
+			// Marly builds both responses from one model, so the fallback must
+			// not silently drop the fields the billing route would have shown.
+			if first["quantity"] != float64(2) {
+				t.Fatalf("the fallback dropped quantity: %#v", first)
+			}
+			if first["startDate"] != "2026-08-01T00:00:00Z" {
+				t.Fatalf("the fallback dropped startDate: %#v", first)
+			}
+			if first["renewalDate"] != "2026-09-01T00:00:00Z" {
+				t.Fatalf("the fallback dropped renewalDate: %#v", first)
+			}
+
+			trials, _ := data["trials"].([]interface{})
+			if len(trials) != 2 {
+				t.Fatalf("expected the encoded premiumEndpointState string to decode into 2 trials, got %#v", data["trials"])
+			}
 		})
 	}
 }
@@ -295,7 +319,15 @@ func TestAddonsStatusHumanOutputShowsTheInstanceUIDAndNotice(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("expected success, got %d\nstderr: %s\nstdout: %s", res.exitCode, res.stderr, res.stdout)
 	}
-	for _, want := range []string{"Active add-ons", "L9P6xpnm", "Trials", "addons_active_unavailable"} {
+	for _, want := range []string{
+		"Active add-ons",
+		"L9P6xpnm",
+		// The fallback carries quantity and renewal date, so the row must not
+		// degrade to "Qty -" and a bare "renews".
+		"renews 2026-09-01T00:00:00Z",
+		"Trials",
+		"addons_active_unavailable",
+	} {
 		if !strings.Contains(res.stdout, want) {
 			t.Fatalf("expected %q in human output:\n%s", want, res.stdout)
 		}
@@ -329,7 +361,9 @@ func TestAccountPaymentMethod(t *testing.T) {
 			name:    "card on file",
 			body:    `{"brand":"Visa","last4":"4242","expMonth":4,"expYear":2029,"name":"A Buyer"}`,
 			wantHas: true,
-			wantYes: []string{"Visa", "4242"},
+			// Masked, because the shared cell formatter would print a bare
+			// "4242" as "4,242".
+			wantYes: []string{"Visa", "•••• 4242", "4/2029", "A Buyer"},
 		},
 	}
 
@@ -369,6 +403,64 @@ func TestAccountPaymentMethod(t *testing.T) {
 
 // Cobra answers an unrecognized subcommand of a group with the group's help and
 // exit 0, so the check that matters is whether the command is registered.
+func TestAccountPaymentMethodTOONOutput(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		wantAny  []string
+		wantNone []string
+	}{
+		{
+			name:     "no card on file",
+			body:     `null`,
+			wantAny:  []string{"hasPaymentMethod: false", "command: account.payment-method", "ok: true"},
+			wantNone: []string{"paymentMethod:"},
+		},
+		{
+			name:    "card on file",
+			body:    `{"brand":"Visa","last4":"4242","expMonth":4,"expYear":2029,"name":"A Buyer"}`,
+			wantAny: []string{"hasPaymentMethod: true", "paymentMethod:", "Visa", "4242", "A Buyer"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := addonsStubServer(t, 0, tt.body)
+			defer server.Close()
+
+			res := runCLIWithEnv(t, addonsEnv(server.URL), "account", "payment-method", "--toon")
+			if res.exitCode != 0 {
+				t.Fatalf("expected success, got %d\nstderr: %s\nstdout: %s", res.exitCode, res.stderr, res.stdout)
+			}
+			for _, want := range tt.wantAny {
+				if !strings.Contains(res.stdout, want) {
+					t.Fatalf("expected %q in TOON output:\n%s", want, res.stdout)
+				}
+			}
+			for _, unwanted := range tt.wantNone {
+				if strings.Contains(res.stdout, unwanted) {
+					t.Fatalf("did not expect %q in TOON output:\n%s", unwanted, res.stdout)
+				}
+			}
+		})
+	}
+}
+
+// An empty 200 must not be reported as "no card on file".
+func TestAccountPaymentMethodFailsOnAnEmptyBody(t *testing.T) {
+	server := addonsStubServer(t, 0, ``)
+	defer server.Close()
+
+	res := runCLIWithEnv(t, addonsEnv(server.URL), "account", "payment-method", "--json")
+	if res.exitCode == 0 {
+		t.Fatalf("expected a non-zero exit for an empty body\nstdout: %s", res.stdout)
+	}
+	parsed := parseJSON(t, res.stdout)
+	if parsed["ok"] != false {
+		t.Fatalf("expected ok:false, got %#v", parsed)
+	}
+}
+
 func TestAccountPaymentMethodIsAbsentWhenTheGateIsOff(t *testing.T) {
 	off := runCLIWithEnv(t, map[string]string{"DWELLIR_ADDONS": "0"}, "account", "--help")
 	if off.exitCode != 0 {

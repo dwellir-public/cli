@@ -3,6 +3,7 @@ package cli
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/dwellir-public/cli/internal/api"
@@ -132,7 +133,12 @@ func TestResolveActiveAddOnsFallsBackWhenMarlyRejectsTheCLIToken(t *testing.T) {
 				t.Fatalf("expected a typed notice, got %+v", notices)
 			}
 			if notices[0].Help == "" {
-				t.Fatal("expected the notice to explain the missing renewal dates")
+				t.Fatal("expected the notice to explain which source answered")
+			}
+			// The account fallback carries every field the billing route does,
+			// so the notice must not claim data is missing.
+			if strings.Contains(notices[0].Help, "missing") {
+				t.Fatalf("stale notice copy: %q", notices[0].Help)
 			}
 		})
 	}

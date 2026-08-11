@@ -1,7 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
@@ -188,18 +191,39 @@ func (a *AddonsAPI) Active() ([]ActiveAddOn, error) {
 }
 
 // PaymentMethod returns nil with a nil error when no card is on file. Marly
-// answers that case with a bare JSON null body.
+// answers that case with a bare JSON `null` body.
+//
+// The body is read as raw JSON rather than straight into the struct so that an
+// empty 200 stays distinguishable from `null`. The client skips unmarshalling a
+// zero-length body, which would otherwise leave the pointer nil and report a
+// truncated or proxy-mangled response as "no card on file".
 func (a *AddonsAPI) PaymentMethod() (*PaymentMethod, error) {
-	var method *PaymentMethod
-	if err := a.client.Get("/v4/billing/payment-method", nil, &method); err != nil {
+	var raw json.RawMessage
+	if err := a.client.Get("/v4/billing/payment-method", nil, &raw); err != nil {
 		return nil, err
 	}
-	return method, nil
+
+	body := bytes.TrimSpace(raw)
+	if len(body) == 0 {
+		return nil, errors.New("payment method response was empty")
+	}
+	if string(body) == "null" {
+		return nil, nil
+	}
+
+	var method PaymentMethod
+	if err := json.Unmarshal(body, &method); err != nil {
+		return nil, fmt.Errorf("parsing payment method: %w", err)
+	}
+	return &method, nil
 }
 
 // ActiveAddOnsFromAccount reads the same add-on instances out of the account
-// payload, which does accept CLI tokens. The instance UIDs match; renewal dates
-// are not always present.
+// payload, which does accept CLI tokens.
+//
+// Marly builds both responses from the same SubscriptionAddOn model
+// (pymarly/outseta/models.py:78-90), so the fallback carries every field the
+// billing route does, including quantity and renewal date.
 func ActiveAddOnsFromAccount(account *AccountInfo) []ActiveAddOn {
 	if account == nil || account.CurrentSubscription == nil {
 		return nil
@@ -217,7 +241,10 @@ func ActiveAddOnsFromAccount(account *AccountInfo) []ActiveAddOn {
 			InstanceUID: instanceUID,
 			AddOnUID:    addOn.CanonicalAddOnUID(),
 			Name:        strings.TrimSpace(addOn.Name),
+			Quantity:    addOn.Quantity,
+			StartDate:   strings.TrimSpace(addOn.StartDate),
 			EndDate:     strings.TrimSpace(addOn.EndDate),
+			RenewalDate: strings.TrimSpace(addOn.RenewalDate),
 		})
 	}
 	return addOns
