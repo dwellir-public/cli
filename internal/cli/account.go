@@ -43,7 +43,34 @@ var accountSubscriptionCmd = &cobra.Command{
 	},
 }
 
+var accountPaymentMethodCmd = &cobra.Command{
+	Use:   "payment-method",
+	Short: "Card on file for this organization",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client, err := newAPIClient()
+		if err != nil {
+			return getFormatter().Error("not_authenticated", err.Error(), "")
+		}
+		method, err := api.NewAddonsAPI(client).PaymentMethod()
+		if err != nil {
+			return formatCommandError(err)
+		}
+		// A nil method is not an error: it is marly's way of saying no card is
+		// on file, so the boolean is what callers should branch on.
+		return getFormatter().Success("account.payment-method", api.PaymentMethodResult{
+			HasPaymentMethod: method != nil,
+			PaymentMethod:    method,
+		})
+	},
+}
+
 func init() {
 	accountCmd.AddCommand(accountInfoCmd, accountSubscriptionCmd)
+	if addonsEnabled() {
+		// Ships with the gated add-on surface: it exists to pre-flight a
+		// purchase, and it should not appear before purchasing does.
+		accountCmd.AddCommand(accountPaymentMethodCmd)
+	}
 	rootCmd.AddCommand(accountCmd)
 }

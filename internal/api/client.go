@@ -22,10 +22,9 @@ func (e *APIError) Error() string {
 }
 
 type Client struct {
-	baseURL        string
-	token          string
-	httpClient     *http.Client
-	OnTokenRefresh func(newToken string)
+	baseURL    string
+	token      string
+	httpClient *http.Client
 }
 
 func NewClient(baseURL, token string) *Client {
@@ -130,9 +129,11 @@ func (c *Client) doWithStatus(req *http.Request, result interface{}) (int, error
 	}
 	defer resp.Body.Close()
 
-	if refreshed := resp.Header.Get("X-Dwellir-Refreshed-Token"); refreshed != "" && c.OnTokenRefresh != nil {
-		c.OnTokenRefresh(refreshed)
-	}
+	// Marly never returns a replacement token. Its refresh middleware only
+	// extends the existing token and advertises the new expiry in
+	// X-Dwellir-Refreshed-Token-Expiry (pymarly/main.py:162), so there is
+	// nothing for the client to persist. The old X-Dwellir-Refreshed-Token
+	// hook read a header that marly does not send and never fired.
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

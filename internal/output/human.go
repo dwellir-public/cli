@@ -67,6 +67,12 @@ func (f *HumanFormatter) Success(command string, data interface{}) error {
 		return f.writeAccountInfo(data)
 	case "account.subscription":
 		return f.writeSubscription(data)
+	case "account.payment-method":
+		return f.writePaymentMethod(data)
+	case "addons.list":
+		return f.writeAddonsList(data)
+	case "addons.status":
+		return f.writeAddonsStatus(data)
 	case "docs.list", "docs.search":
 		return f.writeDocsEntries(data)
 	case "docs.get":
@@ -625,6 +631,221 @@ func (f *HumanFormatter) writeSubscription(data interface{}) error {
 		[2]string{"Monthly quota", formatQuota(sub.MonthlyQuota)},
 	)
 	return f.renderKeyValueRows(rows)
+}
+
+func (f *HumanFormatter) writePaymentMethod(data interface{}) error {
+	result, ok := data.(api.PaymentMethodResult)
+	if !ok {
+		if pointer, pointerOK := data.(*api.PaymentMethodResult); pointerOK && pointer != nil {
+			result = *pointer
+			ok = true
+		}
+	}
+	if !ok {
+		return f.Write(data)
+	}
+
+	if !result.HasPaymentMethod || result.PaymentMethod == nil {
+		_, err := fmt.Fprintln(f.w, "No payment method on file.")
+		return err
+	}
+
+	method := result.PaymentMethod
+	rows := [][2]string{}
+	if method.Brand != "" {
+		rows = append(rows, [2]string{"Brand", method.Brand})
+	}
+	if method.Last4 != "" {
+		// Masked rather than bare, because the shared cell formatter
+		// group-separates anything that parses as a number and would print
+		// "4242" as "4,242".
+		rows = append(rows, [2]string{"Card number", "•••• " + method.Last4})
+	}
+	if expiry := formatCardExpiry(string(method.ExpMonth), string(method.ExpYear)); expiry != "" {
+		rows = append(rows, [2]string{"Expires", expiry})
+	}
+	if method.Name != "" {
+		rows = append(rows, [2]string{"Name on card", method.Name})
+	}
+	if len(rows) == 0 {
+		_, err := fmt.Fprintln(f.w, "A payment method is on file but carries no details.")
+		return err
+	}
+	return f.renderKeyValueRows(rows)
+}
+
+// formatCardExpiry renders MM/YYYY, marking a half Outseta did not return with
+// "?". A half is never returned on its own: a bare "2029" would be reformatted
+// as "2,029" by the shared cell formatter, and it would not read as an expiry.
+func formatCardExpiry(month string, year string) string {
+	month = strings.TrimSpace(month)
+	year = strings.TrimSpace(year)
+	if month == "" && year == "" {
+		return ""
+	}
+	if month == "" {
+		month = "?"
+	}
+	if year == "" {
+		year = "?"
+	}
+	return month + "/" + year
+}
+
+func (f *HumanFormatter) writeAddonsList(data interface{}) error {
+	entries, ok := data.([]api.AddonCatalogEntry)
+	if !ok {
+		return f.Write(data)
+	}
+	if len(entries) == 0 {
+		_, err := fmt.Fprintln(f.w, "No add-ons match those filters.")
+		return err
+	}
+
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Add-on", "Chain", "Kind", "Tier", "Price/mo", "Status"})
+	for _, entry := range entries {
+		tw.AppendRow(f.formatTableRow(table.Row{
+			addonListLabel(entry),
+			orDash(entry.Chain),
+			string(entry.Kind),
+			formatAddonTier(entry.RPS),
+			formatAddonRate(entry.MonthlyRate),
+			entry.Status,
+		}))
+	}
+	return f.renderTable(tw)
+}
+
+// addonListLabel names a catalog row. The endpoint slug is the useful handle
+// for premium and unlimited add-ons; anything else has no endpoint, so it falls
+// back to the Outseta product name rather than rendering an anonymous row.
+func addonListLabel(entry api.AddonCatalogEntry) string {
+	if strings.TrimSpace(entry.Endpoint) != "" {
+		return entry.Endpoint
+	}
+	return orDash(entry.Name)
+}
+
+func (f *HumanFormatter) writeAddonsStatus(data interface{}) error {
+	status, ok := data.(api.AddonsStatus)
+	if !ok {
+		if pointer, pointerOK := data.(*api.AddonsStatus); pointerOK && pointer != nil {
+			status = *pointer
+			ok = true
+		}
+	}
+	if !ok {
+		return f.Write(data)
+	}
+
+	if err := f.writeActiveAddOnsTable(status.AddOns); err != nil {
+		return err
+	}
+	if err := f.writeAddonTrialsTable(status.Trials); err != nil {
+		return err
+	}
+	return f.writeAddonNotices(status.Notices)
+}
+
+func (f *HumanFormatter) writeActiveAddOnsTable(addOns []api.ActiveAddOn) error {
+	if _, err := fmt.Fprintln(f.w, "Active add-ons"); err != nil {
+		return err
+	}
+	if len(addOns) == 0 {
+		_, err := fmt.Fprintln(f.w, "None.")
+		return err
+	}
+
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Name", "Qty", "Renews/Cancels", "Instance UID"})
+	for _, addOn := range addOns {
+		tw.AppendRow(f.formatTableRow(table.Row{
+			orDash(addOn.Name),
+			formatAddonQuantity(addOn.Quantity),
+			formatAddonRenewal(addOn),
+			// The cancel key. Never omit it.
+			addOn.InstanceUID,
+		}))
+	}
+	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeAddonTrialsTable(trials []api.AddonTrial) error {
+	if _, err := fmt.Fprintln(f.w, "\nTrials"); err != nil {
+		return err
+	}
+	if len(trials) == 0 {
+		_, err := fmt.Fprintln(f.w, "None.")
+		return err
+	}
+
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Endpoint", "Chain", "Status", "Ends"})
+	for _, trial := range trials {
+		tw.AppendRow(f.formatTableRow(table.Row{
+			trial.Endpoint,
+			orDash(trial.Chain),
+			trial.Status,
+			orDash(trial.EndsAt),
+		}))
+	}
+	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeAddonNotices(notices []api.AddonNotice) error {
+	for _, notice := range notices {
+		if _, err := fmt.Fprintf(f.w, "\nNotice (%s): %s\n", notice.Code, notice.Message); err != nil {
+			return err
+		}
+		if notice.Help == "" {
+			continue
+		}
+		if _, err := fmt.Fprintf(f.w, "  %s\n", notice.Help); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func formatAddonTier(rps *int) string {
+	if rps == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%d RPS", *rps)
+}
+
+func formatAddonRate(rate *float64) string {
+	// A nil rate means Outseta does not sell the add-on monthly, which is not
+	// the same as a monthly price of zero.
+	if rate == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%.2f", *rate)
+}
+
+func formatAddonQuantity(quantity *int) string {
+	if quantity == nil {
+		return "-"
+	}
+	return strconv.Itoa(*quantity)
+}
+
+func formatAddonRenewal(addOn api.ActiveAddOn) string {
+	if addOn.EndDate != "" {
+		return "cancels " + addOn.EndDate
+	}
+	if addOn.RenewalDate != "" {
+		return "renews " + addOn.RenewalDate
+	}
+	return "renews"
+}
+
+func orDash(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "-"
+	}
+	return value
 }
 
 func (f *HumanFormatter) writeDocsEntries(data interface{}) error {

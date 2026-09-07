@@ -78,26 +78,31 @@ func TestClientUnauthorized(t *testing.T) {
 	}
 }
 
-func TestClientTokenRefresh(t *testing.T) {
+// Marly's refresh middleware only advertises a new expiry for the token the
+// client already holds; it never returns a replacement token value. The client
+// must therefore keep sending the configured token and must not treat the
+// expiry header as something to persist.
+func TestClientKeepsConfiguredTokenWhenMarlyAdvertisesRefreshedExpiry(t *testing.T) {
+	var seenAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Dwellir-Refreshed-Token", "new-token-456")
+		seenAuth = r.Header.Get("Authorization")
+		w.Header().Set("X-Dwellir-Refreshed-Token-Expiry", "2026-03-01T00:00:00+00:00")
 		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
 			t.Errorf("failed to write response: %v", err)
 		}
 	}))
 	defer server.Close()
 
-	var refreshedToken string
 	client := NewClient(server.URL, "old-token")
-	client.OnTokenRefresh = func(newToken string) {
-		refreshedToken = newToken
-	}
 
 	var result map[string]string
 	if err := client.Get("/v4/user", nil, &result); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if refreshedToken != "new-token-456" {
-		t.Errorf("expected refreshed token, got: '%s'", refreshedToken)
+	if seenAuth != "Bearer old-token" {
+		t.Errorf("expected the configured token to be sent, got: %q", seenAuth)
+	}
+	if result["status"] != "ok" {
+		t.Errorf("expected the response body to be decoded, got: %#v", result)
 	}
 }

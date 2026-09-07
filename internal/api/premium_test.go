@@ -120,3 +120,69 @@ func TestApplyPremiumEndpointLabelsTrialActiveKeepsEndpointAndTrialEnd(t *testin
 		t.Fatalf("expected active trial endpoint URL to remain visible")
 	}
 }
+
+// The Hyperliquid testnet SKUs were absent from premiumEndpointRules while the
+// frontend already listed them, so the CLI rendered them as standard endpoints.
+func TestApplyPremiumEndpointLabelsCoversEveryLockedEndpointRule(t *testing.T) {
+	tests := []struct {
+		name     string
+		hostSlug string
+		addOnUID string
+	}{
+		{name: "hyperliquid mainnet orderbook", hostSlug: "api-hyperliquid-mainnet-orderbook", addOnUID: "gWKew2Qp"},
+		{name: "hyperliquid testnet orderbook", hostSlug: "api-hyperliquid-testnet-orderbook", addOnUID: "amRyMMWJ"},
+		{name: "hyperliquid mainnet grpc", hostSlug: "api-hyperliquid-mainnet-grpc", addOnUID: "wQX7GZmK"},
+		{name: "hyperliquid testnet grpc", hostSlug: "api-hyperliquid-testnet-grpc", addOnUID: "pWrOoamn"},
+		{name: "asset hub kusama sidecar", hostSlug: "api-asset-hub-kusama-sidecar", addOnUID: "79OaqZmE"},
+		{name: "asset hub polkadot sidecar", hostSlug: "api-asset-hub-polkadot-sidecar", addOnUID: "1Qp5KY9E"},
+		{name: "assethub polkadot sidecar alias", hostSlug: "api-assethub-polkadot-sidecar", addOnUID: "1Qp5KY9E"},
+		{name: "assethub kusama sidecar alias", hostSlug: "api-assethub-kusama-sidecar", addOnUID: "79OaqZmE"},
+		{name: "kusama sidecar", hostSlug: "api-kusama-sidecar", addOnUID: "y9gpzRWM"},
+		{name: "polkadot sidecar", hostSlug: "api-polkadot-sidecar", addOnUID: "E9L0oP9w"},
+		{name: "centrifuge sidecar", hostSlug: "api-centrifuge-sidecar", addOnUID: "rm06Nk9X"},
+		{name: "kilt sidecar", hostSlug: "api-kilt-sidecar", addOnUID: "z9MvOKW4"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			chains := []Chain{{
+				Name: tt.hostSlug,
+				Networks: []Network{{
+					Name:  "Mainnet",
+					Nodes: []Node{{HTTPS: "https://" + tt.hostSlug + ".n.dwellir.com/<key>"}},
+				}},
+			}}
+
+			locked := ApplyPremiumEndpointLabels(chains, nil)[0].Networks[0].Nodes[0]
+			if !locked.Premium {
+				t.Fatalf("expected %s to be labelled premium", tt.hostSlug)
+			}
+			if locked.PremiumStatus != string(PremiumStatusLocked) {
+				t.Fatalf("expected locked status without an add-on, got %q", locked.PremiumStatus)
+			}
+
+			account := &AccountInfo{CurrentSubscription: &CurrentSubscriptionWindow{
+				SubscriptionAddOns: []OutsetaSubscriptionAddOn{{AddOnUID: tt.addOnUID}},
+			}}
+			active := ApplyPremiumEndpointLabels(chains, account)[0].Networks[0].Nodes[0]
+			if active.PremiumStatus != string(PremiumStatusAddonActive) {
+				t.Fatalf("expected add-on %s to unlock %s, got %q", tt.addOnUID, tt.hostSlug, active.PremiumStatus)
+			}
+		})
+	}
+}
+
+func TestApplyPremiumEndpointLabelsLeavesUnlistedEndpointsStandard(t *testing.T) {
+	chains := []Chain{{
+		Name: "Ethereum",
+		Networks: []Network{{
+			Name:  "Mainnet",
+			Nodes: []Node{{HTTPS: "https://api-ethereum-mainnet.n.dwellir.com/<key>"}},
+		}},
+	}}
+
+	node := ApplyPremiumEndpointLabels(chains, nil)[0].Networks[0].Nodes[0]
+	if node.Premium {
+		t.Fatalf("expected a non-premium endpoint to stay standard")
+	}
+}

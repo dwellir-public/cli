@@ -157,18 +157,7 @@ func newAPIClient() (*api.Client, error) {
 		return nil, err
 	}
 
-	client := api.NewClient(resolveAPIBaseURL(), token)
-
-	client.OnTokenRefresh = func(newToken string) {
-		ctx := resolveProfileContext(profile, cwd, configDir)
-		p, _ := config.LoadProfile(configDir, ctx.Name)
-		if p != nil {
-			p.Token = newToken
-			_ = config.SaveProfile(configDir, p)
-		}
-	}
-
-	return client, nil
+	return api.NewClient(resolveAPIBaseURL(), token), nil
 }
 
 type endpointKeyError struct {
