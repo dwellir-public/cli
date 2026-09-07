@@ -68,11 +68,11 @@ func mergeProjectEnv(old string, values map[string]string, replace bool) (string
 	}
 	lines := strings.Split(strings.TrimRight(old, "\n"), "\n")
 	for i, line := range lines {
-		name, previous, found := strings.Cut(strings.TrimPrefix(strings.TrimSpace(line), "export "), "=")
-		previous = strings.TrimSpace(previous)
-		if found && len(previous) > 0 && (previous[0] == '\'' || previous[0] == '"') && !strings.ContainsRune(previous[1:], rune(previous[0])) {
-			return "", errors.New("multiline environment values require manual configuration")
+		name, found, err := envAssignment(line)
+		if err != nil {
+			return "", err
 		}
+
 		name = strings.TrimSpace(name)
 		value, ours := values[name]
 		if !found || !ours {
@@ -129,4 +129,26 @@ func ValidateProjectEnv(dir, filename string, replace bool) error {
 	}
 	_, err = readRegular(filepath.Join(dir, ".gitignore"))
 	return err
+}
+
+func envAssignment(line string) (string, bool, error) {
+	name, value, found := strings.Cut(strings.TrimPrefix(strings.TrimSpace(line), "export "), "=")
+	value = strings.TrimSpace(value)
+	if found && len(value) > 0 && (value[0] == '\'' || value[0] == '"') && !hasClosingQuote(value) {
+		return "", false, errors.New("multiline environment values require manual configuration")
+	}
+	return name, found, nil
+}
+
+func hasClosingQuote(value string) bool {
+	for i := 1; i < len(value); i++ {
+		if value[i] == '\\' {
+			i++
+			continue
+		}
+		if value[i] == value[0] {
+			return true
+		}
+	}
+	return false
 }
