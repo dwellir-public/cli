@@ -1,4 +1,4 @@
-.PHONY: build test test-e2e lint fmt check run clean
+.PHONY: build test test-e2e lint fmt check run clean file-length
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "dev")
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -20,6 +20,10 @@ test-e2e:
 
 lint:
 	golangci-lint run
+	$(MAKE) file-length
+
+file-length:
+	FILE_LENGTH_EXTS=go FILE_LENGTH_SKIP='_test.go:/test/' bash scripts/check_file_length.sh .
 
 fmt:
 	goimports -w .

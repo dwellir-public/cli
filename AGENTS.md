@@ -4,7 +4,7 @@
 
 - Build: `go build -o bin/dwellir ./cmd/dwellir`
 - Test: `go test ./...`
-- Lint: `golangci-lint run`
+- Lint: `golangci-lint run` (cyclomatic/cognitive max 15) then `make file-length`
 - Format: `goimports -w .`
 - E2E: `go test ./test/e2e/ -tags=e2e -v`
 - Run: `./bin/dwellir <command>`
@@ -28,6 +28,10 @@
 - `internal/auth/` — Browser auth flow + token resolution
 - `internal/telemetry/` — PostHog integration
 - `test/e2e/` — End-to-end tests (build + run binary)
+
+## Deslop
+
+CI fails when cyclomatic or cognitive complexity exceeds 15, or a production `.go` file has 500+ lines (tests excluded). Do not chase 100% coverage.
 
 ## Rules
 
