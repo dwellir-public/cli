@@ -41,7 +41,7 @@ func TestProjectEnvGitIgnore(t *testing.T) {
 func TestProjectEnvPreservesSettingsAndRefusesOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".env")
-	original := "# application\nDATABASE_URL='postgres://local'\nDWELLIR_API_KEY='old'\nDWELLIR_WSS_URL='wss://old'\n"
+	original := "# application\n  # PRIVATE_KEY=\"-----BEGIN PRIVATE KEY-----\n# example\n# -----END PRIVATE KEY-----\"\nDATABASE_URL='postgres://local'\nDWELLIR_API_KEY='old'\nDWELLIR_WSS_URL='wss://old'\n"
 	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 		t.Fatal(err)
 	}

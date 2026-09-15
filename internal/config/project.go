@@ -132,7 +132,11 @@ func ValidateProjectEnv(dir, filename string, replace bool) error {
 }
 
 func envAssignment(line string) (string, bool, error) {
-	name, value, found := strings.Cut(strings.TrimPrefix(strings.TrimSpace(line), "export "), "=")
+	line = strings.TrimSpace(line)
+	if strings.HasPrefix(line, "#") {
+		return "", false, nil
+	}
+	name, value, found := strings.Cut(strings.TrimPrefix(line, "export "), "=")
 	value = strings.TrimSpace(value)
 	if found && len(value) > 0 && (value[0] == '\'' || value[0] == '"') && !hasClosingQuote(value) {
 		return "", false, errors.New("multiline environment values require manual configuration")
