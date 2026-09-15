@@ -30,7 +30,7 @@ func WriteProjectEnv(dir, filename string, values map[string]string, replace boo
 	}
 	// Append after existing rules so an earlier negation cannot expose this file.
 	rule := "/" + filename
-	ignoreLines := strings.Split(strings.TrimSpace(string(ignore)), "\n")
+	ignoreLines := strings.Split(strings.TrimRight(string(ignore), "\r\n"), "\n")
 	if ignoreLines[len(ignoreLines)-1] != rule {
 		ignore = []byte(strings.TrimRight(string(ignore), "\n") + "\n" + rule + "\n")
 	}

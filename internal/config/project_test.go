@@ -8,29 +8,33 @@ import (
 	"testing"
 )
 
-func TestProjectEnvGitNegation(t *testing.T) {
-	dir := t.TempDir()
-	if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v %s", err, out)
-	}
-	path := filepath.Join(dir, ".gitignore")
-	if err := os.WriteFile(path, []byte("*\n!/.env\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := WriteProjectEnv(dir, ".env", map[string]string{"DWELLIR_API_KEY": "secret"}, false); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command("git", "check-ignore", ".env")
-	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("credentials not ignored: %v %s", err, out)
-	}
-	info, err := os.Stat(filepath.Join(dir, ".env"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0600 {
-		t.Fatalf("permissions: %v", info.Mode())
+func TestProjectEnvGitIgnore(t *testing.T) {
+	for _, rules := range []string{"*\n!/.env\n", " /.env\n", "\t/.env\n", "/.env\n"} {
+		t.Run(rules, func(t *testing.T) {
+			dir := t.TempDir()
+			if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
+				t.Fatalf("git init: %v %s", err, out)
+			}
+			path := filepath.Join(dir, ".gitignore")
+			if err := os.WriteFile(path, []byte(rules), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := WriteProjectEnv(dir, ".env", map[string]string{"DWELLIR_API_KEY": "secret"}, false); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("git", "-c", "core.excludesFile=/dev/null", "check-ignore", ".env")
+			cmd.Dir = dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("credentials not ignored: %v %s", err, out)
+			}
+			info, err := os.Stat(filepath.Join(dir, ".env"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Mode().Perm() != 0600 {
+				t.Fatalf("permissions: %v", info.Mode())
+			}
+		})
 	}
 }
 

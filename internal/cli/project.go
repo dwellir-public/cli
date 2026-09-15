@@ -71,19 +71,19 @@ func (options *projectOptions) run(cmd *cobra.Command, _ []string) error {
 	}
 	client, err := newAPIClient()
 	if err != nil {
-		return formatCommandError(err)
+		return getFormatter().Error("not_authenticated", err.Error(), "")
 	}
 	chains, err := api.NewEndpointsAPI(client).Get(options.chain, "", options.nodeType, "", options.network)
 	if err != nil {
-		return getFormatter().Error("api_error", "Could not retrieve endpoints.", "")
+		return formatCommandError(projectAPIError(err, "Could not retrieve endpoints."))
 	}
 	node, err := projectNode(chains)
 	if err != nil {
 		return getFormatter().Error("validation_error", err.Error(), "Choose an exact network and --node-type.")
 	}
-	key, err := projectKey(api.NewKeysAPI(client), options.keyName, options.createKey, options.dailyQuota, options.monthlyQuota)
+	key, err := projectKey(api.NewKeysAPI(client), options.keyName, options.createKey, projectQuota(cmd, "daily-quota"), projectQuota(cmd, "monthly-quota"))
 	if err != nil {
-		return getFormatter().Error("api_error", err.Error(), "")
+		return formatCommandError(err)
 	}
 	values := projectEnv(node, key)
 	if err := config.WriteProjectEnv(dir, options.envFile, values, options.replace); err != nil {
@@ -116,13 +116,13 @@ func projectNode(chains []api.Chain) (api.Node, error) {
 	return node, nil
 }
 
-func projectKey(keys *api.KeysAPI, name, create string, daily, monthly int) (string, error) {
+func projectKey(keys *api.KeysAPI, name, create string, daily, monthly *int) (string, error) {
 	if create != "" {
 		name = create
 	}
 	all, err := keys.List()
 	if err != nil {
-		return "", errors.New("could not list project keys")
+		return "", projectAPIError(err, "could not list project keys")
 	}
 	var matches []api.APIKey
 	for _, key := range all {
@@ -143,17 +143,11 @@ func projectKey(keys *api.KeysAPI, name, create string, daily, monthly int) (str
 	return createProjectKey(keys, name, daily, monthly)
 }
 
-func createProjectKey(keys *api.KeysAPI, name string, daily, monthly int) (string, error) {
-	input := api.CreateKeyInput{Name: name}
-	if daily > 0 {
-		input.DailyQuota = &daily
-	}
-	if monthly > 0 {
-		input.MonthlyQuota = &monthly
-	}
+func createProjectKey(keys *api.KeysAPI, name string, daily, monthly *int) (string, error) {
+	input := api.CreateKeyInput{Name: name, DailyQuota: daily, MonthlyQuota: monthly}
 	key, err := keys.Create(input)
 	if err != nil {
-		return "", errors.New("could not create project key; check account permissions")
+		return "", projectAPIError(err, "could not create project key; check account permissions")
 	}
 	if key.APIKey == "" {
 		return "", errors.New("the account returned an empty key")
@@ -204,7 +198,7 @@ func validateProjectURL(endpoint, scheme string) error {
 	return nil
 }
 
-func existingProjectKey(key api.APIKey, create string, daily, monthly int) (string, error) {
+func existingProjectKey(key api.APIKey, create string, daily, monthly *int) (string, error) {
 	if !key.Enabled {
 		return "", errors.New("the selected key is disabled")
 	}
@@ -217,11 +211,30 @@ func existingProjectKey(key api.APIKey, create string, daily, monthly int) (stri
 	return key.APIKey, nil
 }
 
-func quotaMatches(requested int, configured *int) bool {
-	if requested == 0 {
+func quotaMatches(requested, configured *int) bool {
+	if requested == nil {
 		return true
 	}
-	return configured != nil && *configured == requested
+	if configured == nil {
+		return *requested == 0
+	}
+	return *configured == *requested
+}
+
+func projectQuota(cmd *cobra.Command, name string) *int {
+	if !cmd.Flags().Changed(name) {
+		return nil
+	}
+	value, _ := cmd.Flags().GetInt(name)
+	return &value
+}
+
+func projectAPIError(err error, message string) error {
+	var apiErr *api.APIError
+	if errors.As(err, &apiErr) {
+		return &api.APIError{StatusCode: apiErr.StatusCode, Body: message}
+	}
+	return errors.New(message)
 }
 
 func projectEnv(node api.Node, key string) map[string]string {
