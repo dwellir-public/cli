@@ -14,6 +14,7 @@ import (
 const defaultDashboardURL = "https://dashboard.dwellir.com"
 
 var tokenFlag string
+var deviceCodeLogin bool
 
 var authCmd = &cobra.Command{
 	Use:   "auth",
@@ -27,6 +28,20 @@ var authLoginCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		configDir := config.DefaultConfigDir()
 		f := getFormatter()
+
+		if deviceCodeLogin && tokenFlag != "" {
+			return f.Error("validation_error", "Choose --device-code or --token, not both.", "")
+		}
+
+		if deviceCodeLogin {
+			cwd, _ := os.Getwd()
+			ctx := resolveProfileContext(profile, cwd, configDir)
+			_, err := auth.DeviceLogin(cmd.Context(), configDir, ctx.Name, resolveAPIBaseURL())
+			if err != nil {
+				return f.Error("auth_failed", err.Error(), "")
+			}
+			return f.Success("auth.login", map[string]string{"status": "authenticated", "profile": ctx.Name, "method": "device-code"})
+		}
 
 		if tokenFlag != "" {
 			cwd, _ := os.Getwd()
@@ -126,6 +141,7 @@ var authTokenCmd = &cobra.Command{
 }
 
 func init() {
+	authLoginCmd.Flags().BoolVar(&deviceCodeLogin, "device-code", false, "Approve login from a browser on any device")
 	authLoginCmd.Flags().StringVar(&tokenFlag, "token", "", "Authenticate with a CLI token directly (for headless/CI)")
 	authCmd.AddCommand(authLoginCmd, authLogoutCmd, authStatusCmd, authTokenCmd)
 	rootCmd.AddCommand(authCmd)
