@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -351,8 +352,8 @@ func resolveTelemetryIdentity(configDir string, profileOverride string) telemetr
 		identity.UserEmail = strings.TrimSpace(user.Email)
 		identity.UserName = strings.TrimSpace(user.Name)
 	}
-	if accountErr == nil && account != nil {
-		identity.OrgID = strings.TrimSpace(account.UID)
+	if accountErr == nil && account != nil && account.OrganizationID > 0 {
+		identity.OrgID = strconv.FormatInt(account.OrganizationID, 10)
 		identity.OrgName = strings.TrimSpace(account.Name)
 	}
 
@@ -382,14 +383,7 @@ func resolveStoredTelemetryIdentity(configDir string, profileOverride string) te
 	identity.UserID = strings.TrimSpace(p.User)
 	identity.UserEmail = strings.TrimSpace(p.UserEmail)
 	identity.UserName = strings.TrimSpace(p.UserName)
-	identity.OrgID = strings.TrimSpace(p.OrgID)
-	identity.OrgName = strings.TrimSpace(p.OrgName)
-	if identity.OrgID == "" {
-		identity.OrgID = strings.TrimSpace(p.Org)
-	}
-	if identity.OrgName == "" {
-		identity.OrgName = strings.TrimSpace(p.Org)
-	}
+	// Legacy profiles contain Outseta IDs or names. Only the backend can resolve the group.
 	return identity
 }
 

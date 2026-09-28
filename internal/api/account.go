@@ -6,6 +6,7 @@ import (
 )
 
 type AccountInfo struct {
+	OrganizationID       int64                      `json:"organization_id,omitempty"`
 	UID                  string                     `json:"uid,omitempty"`
 	Name                 string                     `json:"name"`
 	ServerLocation       string                     `json:"idealServerLocation,omitempty"`

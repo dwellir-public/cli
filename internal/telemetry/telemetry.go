@@ -28,10 +28,17 @@ var posthogAPIKey = ""
 var posthogEndpoint = "https://eu.i.posthog.com"
 
 func Enabled() bool {
+	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("DWELLIR_API_URL")), "/")
+	if baseURL != "" && baseURL != "https://dashboard.dwellir.com/marly-api" && baseURL != "https://marly.dwellir.com" {
+		return false
+	}
 	return posthogAPIKey != "" || strings.TrimSpace(os.Getenv("DWELLIR_POSTHOG_KEY")) != ""
 }
 
 func Init(ver string, user string, org string, organizationName string, device string, anon bool) {
+	if !Enabled() {
+		return
+	}
 	version = ver
 	userID = user
 	orgID = org
