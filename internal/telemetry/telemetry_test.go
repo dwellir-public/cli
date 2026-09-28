@@ -160,6 +160,8 @@ func TestIngestionOnlyForProductionAPI(t *testing.T) {
 		{"local", "http://localhost:8000", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			client = nil
+			t.Cleanup(func() { client = nil })
 			var requests atomic.Int64
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests.Add(1)
