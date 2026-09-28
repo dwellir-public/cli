@@ -1,6 +1,10 @@
 package telemetry
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/posthog/posthog-go"
@@ -141,5 +145,38 @@ func TestTrackCommandAssociatesOrganizationGroup(t *testing.T) {
 	}
 	if capture.Properties["org_name"] != "Acme" {
 		t.Fatalf("org_name property = %#v, want Acme", capture.Properties["org_name"])
+	}
+}
+
+func TestIngestionOnlyForProductionAPI(t *testing.T) {
+	for _, tc := range []struct {
+		name, api string
+		sends     bool
+	}{
+		{"default production", "", true},
+		{"production dashboard", "https://dashboard.dwellir.com/marly-api/", true},
+		{"production backend", "https://marly.dwellir.com", true},
+		{"staging", "https://marly-staging.dwellir.com", false},
+		{"local", "http://localhost:8000", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client = nil
+			t.Cleanup(func() { client = nil })
+			var requests atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				_, _ = io.WriteString(w, `{"status":1}`)
+			}))
+			t.Cleanup(server.Close)
+			t.Setenv("DWELLIR_API_URL", tc.api)
+			t.Setenv("DWELLIR_POSTHOG_KEY", "test-key")
+			t.Setenv("DWELLIR_POSTHOG_HOST", server.URL)
+			Init("test", "user-123", "42", "Acme", "device", false)
+			TrackCommand("account.info", nil)
+			Close()
+			if got := requests.Load() > 0; got != tc.sends {
+				t.Fatalf("ingestion occurred=%v, want %v", got, tc.sends)
+			}
+		})
 	}
 }

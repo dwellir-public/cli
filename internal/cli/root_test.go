@@ -394,8 +394,9 @@ func TestResolveTelemetryIdentityFetchesAndCachesTokenIdentity(t *testing.T) {
 			})
 		case "/v4/organization/information/outseta":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"uid":  "acct-123",
-				"name": "Acme",
+				"uid":             "acct-123",
+				"organization_id": 42,
+				"name":            "Acme",
 			})
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
@@ -418,8 +419,8 @@ func TestResolveTelemetryIdentityFetchesAndCachesTokenIdentity(t *testing.T) {
 	if identity.UserName != "Ada Lovelace" {
 		t.Fatalf("user name = %q, want Ada Lovelace", identity.UserName)
 	}
-	if identity.OrgID != "acct-123" {
-		t.Fatalf("org id = %q, want acct-123", identity.OrgID)
+	if identity.OrgID != "42" {
+		t.Fatalf("org id = %q, want 42", identity.OrgID)
 	}
 	if identity.OrgName != "Acme" {
 		t.Fatalf("org name = %q, want Acme", identity.OrgName)
@@ -432,7 +433,7 @@ func TestResolveTelemetryIdentityFetchesAndCachesTokenIdentity(t *testing.T) {
 	if profile.User != "user-123" || profile.UserEmail != "ada@example.com" || profile.UserName != "Ada Lovelace" {
 		t.Fatalf("cached user identity = %#v", profile)
 	}
-	if profile.OrgID != "acct-123" || profile.OrgName != "Acme" {
+	if profile.OrgID != "42" || profile.OrgName != "Acme" {
 		t.Fatalf("cached org identity = %#v", profile)
 	}
 }
@@ -515,5 +516,45 @@ func TestInitializeTelemetrySkipsIdentityLookupAndPropsWhenAnonymous(t *testing.
 	}
 	if props["is_anonymous"] != true {
 		t.Fatalf("is_anonymous = %#v, want true", props["is_anonymous"])
+	}
+}
+
+func TestTelemetryNeverUsesCachedOrganizationWithoutBackendIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"legacy backend", http.StatusOK, `{"uid":"acct-123","name":"Acme"}`},
+		{"account unavailable", http.StatusServiceUnavailable, `{}`},
+		{"invalid organization", http.StatusOK, `{"organization_id":-1,"uid":"acct-123"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			configDir := t.TempDir()
+			if err := config.SaveProfile(configDir, &config.Profile{Name: "default", Token: "token", OrgID: "acct-123", Org: "Acme", User: "user-123"}); err != nil {
+				t.Fatal(err)
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v4/user" {
+					_, _ = io.WriteString(w, `{"id":"user-123"}`)
+					return
+				}
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			t.Cleanup(server.Close)
+			t.Setenv("DWELLIR_API_URL", server.URL)
+			identity := resolveTelemetryIdentity(configDir, "")
+			if identity.OrgID != "" {
+				t.Fatalf("unverified organization sent: %q", identity.OrgID)
+			}
+			p, err := config.LoadProfile(configDir, "default")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p.OrgID != "" {
+				t.Fatalf("legacy organization cache retained: %q", p.OrgID)
+			}
+		})
 	}
 }

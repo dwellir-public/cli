@@ -236,6 +236,9 @@ dwellir doctor --verify-api
 - `DWELLIR_POSTHOG_HOST` — override PostHog ingestion host (defaults to `https://eu.i.posthog.com`; useful for self-hosted PostHog)
 - `DWELLIR_ADDONS` — enable the in-progress `dwellir addons` commands (`1` or `0`, default `0`). Off by default and unsupported: the surface is incomplete and depends on API changes that have not shipped. `dwellir doctor` reports the resolved state.
 
+Telemetry runs only against the production dashboard or Marly API. Custom and staging API URLs disable telemetry.
+Organization grouping uses the backend `organization_id`; cached Outseta IDs and names are never used as group keys.
+
 ## Development
 
 ```bash
