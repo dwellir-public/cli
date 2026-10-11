@@ -355,9 +355,9 @@ func (f *HumanFormatter) writeUsageBreakdown(data interface{}) error {
 		return err
 	}
 	tw := table.NewWriter()
-	tw.AppendHeader(table.Row{"Group", "Requests", "Responses", "Unanswered"})
+	tw.AppendHeader(table.Row{"Group", "Requests", "Responses", "Rate Limited"})
 	for _, row := range breakdown {
-		tw.AppendRow(f.formatTableRow(table.Row{row.Group, row.Requests, row.Responses, row.Unanswered}))
+		tw.AppendRow(f.formatTableRow(table.Row{row.Group, row.Requests, row.Responses, row.RateLimited}))
 	}
 	return f.renderTable(tw)
 }
