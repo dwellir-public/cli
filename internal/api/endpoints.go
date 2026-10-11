@@ -110,7 +110,6 @@ func (e *EndpointsAPI) Get(chainLookup string, ecosystem string, nodeType string
 			}
 		}
 
-		matchedNetworks = preferExactNetwork(matchedNetworks, network)
 		if len(matchedNetworks) == 0 {
 			return nil, nil
 		}
@@ -138,9 +137,9 @@ func matchesNetworkFilter(networkName, filter string) bool {
 	}
 }
 
-// preferExactNetwork keeps only networks whose name equals the filter, when
+// PreferExactNetwork keeps only networks whose name equals the filter, when
 // any do. "Mainnet" then selects "Mainnet" and not also "Mainnet (Full)".
-func preferExactNetwork(networks []Network, filter string) []Network {
+func PreferExactNetwork(networks []Network, filter string) []Network {
 	filter = strings.TrimSpace(filter)
 	if filter == "" {
 		return networks

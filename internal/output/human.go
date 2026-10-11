@@ -38,6 +38,8 @@ func NewHumanFormatter(w io.Writer) *HumanFormatter {
 }
 
 func (f *HumanFormatter) Success(command string, data interface{}) error {
+	// JSON and TOON report the cursor in meta (successResponse); human output
+	// prints it after the rows.
 	if page, ok := data.(Page); ok {
 		if err := f.Success(command, page.Items); err != nil {
 			return err

@@ -78,6 +78,9 @@ func (options *projectOptions) run(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return formatCommandError(projectAPIError(err, "Could not retrieve endpoints."))
 	}
+	for i := range chains {
+		chains[i].Networks = api.PreferExactNetwork(chains[i].Networks, options.network)
+	}
 	node, err := projectNode(chains)
 	if err != nil {
 		return getFormatter().Error("validation_error", err.Error(), "Choose an exact network and --node-type.")
