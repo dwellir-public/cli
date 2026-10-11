@@ -38,6 +38,16 @@ func NewHumanFormatter(w io.Writer) *HumanFormatter {
 }
 
 func (f *HumanFormatter) Success(command string, data interface{}) error {
+	if page, ok := data.(Page); ok {
+		if err := f.Success(command, page.Items); err != nil {
+			return err
+		}
+		if !page.HasMore {
+			return nil
+		}
+		_, err := fmt.Fprintf(f.w, "More results available. Next page: --cursor %s\n", page.NextCursor)
+		return err
+	}
 	switch command {
 	case "keys.list":
 		return f.writeKeysList(data)
@@ -343,9 +353,9 @@ func (f *HumanFormatter) writeUsageBreakdown(data interface{}) error {
 		return err
 	}
 	tw := table.NewWriter()
-	tw.AppendHeader(table.Row{"Group", "Requests", "Responses", "Rate Limited"})
+	tw.AppendHeader(table.Row{"Group", "Requests", "Responses", "Unanswered"})
 	for _, row := range breakdown {
-		tw.AppendRow(f.formatTableRow(table.Row{row.Group, row.Requests, row.Responses, row.RateLimited}))
+		tw.AppendRow(f.formatTableRow(table.Row{row.Group, row.Requests, row.Responses, row.Unanswered}))
 	}
 	return f.renderTable(tw)
 }

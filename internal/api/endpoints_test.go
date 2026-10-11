@@ -174,3 +174,44 @@ func TestSearchEndpointsByProtocolFilter(t *testing.T) {
 		t.Fatalf("expected https endpoint to be removed for --protocol wss, got %q", wssOnly[0].Networks[0].Nodes[0].HTTPS)
 	}
 }
+
+func TestGetEndpointsPrefersExactNetworkName(t *testing.T) {
+	chains := []testChain{
+		{
+			ID: 1, Name: "Polygon", ImageURL: "polygon.png",
+			Networks: []testNetwork{
+				{ID: 1, Name: "Mainnet", Nodes: []testNode{
+					{ID: 1, HTTPS: "https://polygon-mainnet.dwellir.com", NodeType: testNodeType{Name: "Archive"}},
+				}},
+				{ID: 2, Name: "Mainnet (Full)", Nodes: []testNode{
+					{ID: 2, HTTPS: "https://polygon-full.dwellir.com", NodeType: testNodeType{Name: "Full"}},
+				}},
+			},
+		},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(chains); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	ep := NewEndpointsAPI(NewClient(server.URL, "token"))
+	for _, filter := range []string{"Mainnet", "mainnet"} {
+		got, err := ep.Get("polygon", "", "", "", filter)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 1 || len(got[0].Networks) != 1 || got[0].Networks[0].Name != "Mainnet" {
+			t.Fatalf("filter %q: expected only the exact Mainnet network, got %+v", filter, got)
+		}
+	}
+
+	full, err := ep.Get("polygon", "", "", "", "full")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(full) != 1 || len(full[0].Networks) != 1 || full[0].Networks[0].Name != "Mainnet (Full)" {
+		t.Fatalf("expected substring match to still work, got %+v", full)
+	}
+}

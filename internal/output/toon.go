@@ -3,7 +3,6 @@ package output
 import (
 	"encoding/json"
 	"io"
-	"time"
 
 	toon "github.com/toon-format/toon-go"
 )
@@ -17,15 +16,7 @@ func NewTOONFormatter(w io.Writer) *TOONFormatter {
 }
 
 func (f *TOONFormatter) Success(command string, data interface{}) error {
-	resp := Response{
-		OK:   true,
-		Data: data,
-		Meta: &Meta{
-			Command:   command,
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-		},
-	}
-	return f.encode(resp)
+	return f.encode(successResponse(command, data))
 }
 
 func (f *TOONFormatter) Error(code string, message string, help string) error {

@@ -37,18 +37,22 @@ func TestLogsErrorsResponseWrapper(t *testing.T) {
 					"total_latency_ms":      15,
 				},
 			},
-			"has_more": false,
+			"next_cursor": "cursor-2",
+			"has_more":    true,
 		})
 	}))
 	defer server.Close()
 
 	api := NewLogsAPI(NewClient(server.URL, "token"))
-	logs, err := api.Errors(map[string]interface{}{"api_key": "key-1", "limit": 5})
+	page, err := api.Errors(map[string]interface{}{"api_key": "key-1", "limit": 5})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(logs) != 1 {
-		t.Fatalf("expected 1 log item, got %d", len(logs))
+	if len(page.Items) != 1 {
+		t.Fatalf("expected 1 log item, got %d", len(page.Items))
+	}
+	if page.NextCursor != "cursor-2" || !page.HasMore {
+		t.Fatalf("expected cursor-2 with has_more, got %q %v", page.NextCursor, page.HasMore)
 	}
 }
 

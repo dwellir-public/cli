@@ -88,11 +88,14 @@ func (r *OrganizationRPS) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// UsageBreakdown groups usage rows. Unanswered is requests minus responses,
+// which counts subscriptions and timeouts as well as rejected calls, so it is
+// not a rate-limit count. Only `usage summary` reports rate-limited requests.
 type UsageBreakdown struct {
-	Group       string `json:"group"`
-	Requests    int    `json:"requests"`
-	Responses   int    `json:"responses"`
-	RateLimited int    `json:"rate_limited"`
+	Group      string `json:"group"`
+	Requests   int    `json:"requests"`
+	Responses  int    `json:"responses"`
+	Unanswered int    `json:"unanswered"`
 }
 
 type UsageAPI struct {
@@ -196,7 +199,7 @@ func BuildUsageBreakdown(history []UsageHistory, keyFn func(UsageHistory) string
 
 	out := make([]UsageBreakdown, 0, len(grouped))
 	for _, entry := range grouped {
-		entry.RateLimited = max(0, entry.Requests-entry.Responses)
+		entry.Unanswered = max(0, entry.Requests-entry.Responses)
 		out = append(out, *entry)
 	}
 	sort.Slice(out, func(i, j int) bool {

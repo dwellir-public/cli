@@ -3,6 +3,7 @@ package output
 import (
 	"errors"
 	"io"
+	"time"
 )
 
 // Response is the JSON envelope for all CLI output.
@@ -20,9 +21,33 @@ type ErrorBody struct {
 }
 
 type Meta struct {
-	Command   string `json:"command"`
-	Timestamp string `json:"timestamp"`
-	Profile   string `json:"profile,omitempty"`
+	Command    string `json:"command"`
+	Timestamp  string `json:"timestamp"`
+	Profile    string `json:"profile,omitempty"`
+	NextCursor string `json:"next_cursor,omitempty"`
+	HasMore    *bool  `json:"has_more,omitempty"`
+}
+
+// Page is list data with a pagination cursor. Formatters print Items as the
+// data and report the cursor in meta, so scripts can read every page.
+type Page struct {
+	Items      interface{}
+	NextCursor string
+	HasMore    bool
+}
+
+func successResponse(command string, data interface{}) Response {
+	meta := &Meta{
+		Command:   command,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+	if page, ok := data.(Page); ok {
+		data = page.Items
+		hasMore := page.HasMore
+		meta.HasMore = &hasMore
+		meta.NextCursor = page.NextCursor
+	}
+	return Response{OK: true, Data: data, Meta: meta}
 }
 
 // Formatter defines how CLI output is rendered.

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dwellir-public/cli/internal/api"
@@ -89,5 +90,21 @@ func TestProjectSetupAuthenticationErrors(t *testing.T) {
 				t.Fatalf("got %v; want rendered %s", err, want)
 			}
 		})
+	}
+}
+
+func TestProjectNodeListsCandidatesWhenAmbiguous(t *testing.T) {
+	chains := []api.Chain{{Networks: []api.Network{
+		{Name: "Mainnet", Nodes: []api.Node{{HTTPS: "https://a.example", NodeType: api.NodeType{Name: "Archive"}}}},
+		{Name: "Mainnet (Full)", Nodes: []api.Node{{HTTPS: "https://b.example", NodeType: api.NodeType{Name: "Full"}}}},
+	}}}
+	_, err := projectNode(chains)
+	if err == nil {
+		t.Fatal("expected an error for two matching endpoints")
+	}
+	for _, want := range []string{`--network "Mainnet" --node-type Archive`, `--network "Mainnet (Full)" --node-type Full`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected %s in error, got %q", want, err.Error())
+		}
 	}
 }

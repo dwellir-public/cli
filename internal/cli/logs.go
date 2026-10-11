@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/dwellir-public/cli/internal/api"
+	"github.com/dwellir-public/cli/internal/output"
 )
 
 var (
@@ -31,11 +32,15 @@ var logsErrorsCmd = &cobra.Command{
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
 		filters := buildLogFilters()
-		logs, err := api.NewLogsAPI(client).Errors(filters)
+		page, err := api.NewLogsAPI(client).Errors(filters)
 		if err != nil {
 			return formatCommandError(err)
 		}
-		return getFormatter().Success("logs.errors", logs)
+		return getFormatter().Success("logs.errors", output.Page{
+			Items:      maskErrorLogs(page.Items),
+			NextCursor: page.NextCursor,
+			HasMore:    page.HasMore,
+		})
 	},
 }
 
@@ -69,7 +74,7 @@ var logsFacetsCmd = &cobra.Command{
 		if err != nil {
 			return formatCommandError(err)
 		}
-		return getFormatter().Success("logs.facets", facets)
+		return getFormatter().Success("logs.facets", maskErrorFacets(facets))
 	},
 }
 
@@ -110,6 +115,9 @@ func init() {
 		cmd.Flags().StringVar(&logRPCMethod, "rpc-method", "", "Filter by RPC method")
 		cmd.Flags().StringVar(&logFrom, "from", "", "Start time (RFC3339)")
 		cmd.Flags().StringVar(&logTo, "to", "", "End time (RFC3339)")
+	}
+	for _, cmd := range []*cobra.Command{logsErrorsCmd, logsFacetsCmd} {
+		cmd.Flags().BoolVar(&showSecrets, "show-secrets", false, secretFlagHelp)
 	}
 	logsErrorsCmd.Flags().IntVar(&logLimit, "limit", 50, "Max results")
 	logsErrorsCmd.Flags().StringVar(&logCursor, "cursor", "", "Pagination cursor")
