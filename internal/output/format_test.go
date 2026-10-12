@@ -2,6 +2,7 @@ package output
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -481,5 +482,17 @@ func TestDiagnosticWriterMasksKeyShapedValues(t *testing.T) {
 	_, _ = NewDiagnosticWriter(&buf).Write([]byte("Unknown help topic [0f9e8d7c-aaaa-bbbb-cccc-ddddeeeeffff]\n"))
 	if got := buf.String(); got != "Unknown help topic [0f9e****ffff]\n" {
 		t.Fatalf("expected the UUID masked, got %q", got)
+	}
+}
+
+func TestTerminalWidthSeesThroughMaskingWriters(t *testing.T) {
+	tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+	if err != nil {
+		t.Skip("no terminal")
+	}
+	defer tty.Close()
+	direct := terminalWidthFromWriter(tty)
+	if got := terminalWidthFromWriter(NewDiagnosticWriter(NewKeyMaskingWriter(tty))); got != direct {
+		t.Fatalf("expected width %d through masking writers, got %d", direct, got)
 	}
 }

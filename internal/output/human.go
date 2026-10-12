@@ -1072,6 +1072,14 @@ func formatPremiumLabel(node api.Node) string {
 }
 
 func terminalWidthFromWriter(w io.Writer) int {
+	// Masking writers wrap the terminal; measure the file underneath.
+	for {
+		masking, ok := w.(keyMaskingWriter)
+		if !ok {
+			break
+		}
+		w = masking.w
+	}
 	file, ok := w.(*os.File)
 	if !ok {
 		return 0
