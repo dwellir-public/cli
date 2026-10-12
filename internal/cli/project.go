@@ -47,10 +47,11 @@ func (options *projectOptions) validate(cmd *cobra.Command) error {
 		return getFormatter().Error("validation_error", "Specify --chain, --network, and exactly one of --key-name or --create-key.", "Run dwellir project setup --help")
 	}
 	if options.dailyQuota < 0 || options.monthlyQuota < 0 {
-		return getFormatter().Error("validation_error", "Quotas cannot be negative.", "")
+		return getFormatter().Error("validation_error", "Quotas cannot be negative.", "Pass 0 for no quota, or a positive number.")
 	}
 	if options.createKey == "" && (cmd.Flags().Changed("daily-quota") || cmd.Flags().Changed("monthly-quota")) {
-		return getFormatter().Error("validation_error", "Quota flags apply only to --create-key.", "")
+		return getFormatter().Error("validation_error", "Quota flags apply only to --create-key.",
+			"Remove --daily-quota and --monthly-quota, or change an existing key with 'dwellir keys update <name>'.")
 	}
 	return nil
 }
@@ -65,10 +66,11 @@ func (options *projectOptions) run(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if err := validateUntrackedEnv(dir, options.envFile); err != nil {
-		return getFormatter().Error("validation_error", err.Error(), "")
+		return getFormatter().Error("validation_error", err.Error(),
+			"Credentials must not go into a file that Git tracks. Run 'git rm --cached "+options.envFile+"', or pass --env-file .env.local.")
 	}
 	if err := config.ValidateProjectEnv(dir, options.envFile, options.replace); err != nil {
-		return getFormatter().Error("configuration_error", err.Error(), "")
+		return getFormatter().Error("configuration_error", err.Error(), projectEnvHelp)
 	}
 	client, err := newAPIClient()
 	if err != nil {
@@ -86,12 +88,18 @@ func (options *projectOptions) run(cmd *cobra.Command, _ []string) error {
 		return getFormatter().Error("validation_error", err.Error(), "Choose an exact network and --node-type.")
 	}
 	key, err := projectKey(api.NewKeysAPI(client), options.keyName, options.createKey, projectQuota(cmd, "daily-quota"), projectQuota(cmd, "monthly-quota"))
+	var apiErr *api.APIError
+	if err != nil && !errors.As(err, &apiErr) {
+		return getFormatter().Error("validation_error", err.Error(),
+			"Run 'dwellir keys list' to see key names and whether each is enabled. Pass --key-name with a unique enabled key, "+
+				"or --create-key <new-name>. Change quotas with 'dwellir keys update <name>'.")
+	}
 	if err != nil {
 		return formatCommandError(err)
 	}
 	values := projectEnv(node, key)
 	if err := config.WriteProjectEnv(dir, options.envFile, values, options.replace); err != nil {
-		return getFormatter().Error("configuration_error", err.Error(), "")
+		return getFormatter().Error("configuration_error", err.Error(), projectEnvHelp)
 	}
 	return getFormatter().Success("project.setup", map[string]interface{}{"file": options.envFile, "configured": true, "https": node.HTTPS != "", "wss": node.WSS != ""})
 }
@@ -160,13 +168,16 @@ func createProjectKey(keys *api.KeysAPI, name string, daily, monthly *int) (stri
 	if err != nil {
 		return "", projectAPIError(err, "could not create project key; check account permissions")
 	}
-	if key.APIKey == "" {
+	if key.APIKey.IsZero() {
 		return "", errors.New("the account returned an empty key")
 	}
-	return key.APIKey, nil
+	return key.APIKey.Reveal(), nil
 }
 
 func init() { rootCmd.AddCommand(newProjectCommand()) }
+
+const projectEnvHelp = "Use --env-file .env or --env-file .env.local. Pass --replace to overwrite existing Dwellir values. " +
+	"The file and .gitignore must be regular files, not symlinks."
 
 func validateUntrackedEnv(dir, filename string) error {
 	repository := exec.Command("git", "rev-parse", "--show-toplevel")
@@ -216,10 +227,10 @@ func existingProjectKey(key api.APIKey, create string, daily, monthly *int) (str
 	if create != "" && (!quotaMatches(daily, key.DailyQuota) || !quotaMatches(monthly, key.MonthlyQuota)) {
 		return "", errors.New("existing key quotas differ; update the key explicitly before setup")
 	}
-	if key.APIKey == "" {
+	if key.APIKey.IsZero() {
 		return "", errors.New("the account returned an empty key")
 	}
-	return key.APIKey, nil
+	return key.APIKey.Reveal(), nil
 }
 
 func quotaMatches(requested, configured *int) bool {

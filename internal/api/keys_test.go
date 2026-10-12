@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -13,9 +14,6 @@ import (
 )
 
 func TestListKeys(t *testing.T) {
-	keys := []APIKey{
-		{APIKey: "abc-123", Name: "test-key", Enabled: true},
-	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Errorf("expected GET, got %s", r.Method)
@@ -23,9 +21,7 @@ func TestListKeys(t *testing.T) {
 		if r.URL.Path != "/v4/organization/apikeys" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		if err := json.NewEncoder(w).Encode(keys); err != nil {
-			t.Errorf("failed to write response: %v", err)
-		}
+		_, _ = w.Write([]byte(`[{"api_key":"` + testKey + `","name":"test-key","enabled":true}]`))
 	}))
 	defer server.Close()
 
@@ -38,8 +34,8 @@ func TestListKeys(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 key, got %d", len(result))
 	}
-	if result[0].Name != "test-key" {
-		t.Errorf("expected test-key, got %s", result[0].Name)
+	if result[0].Name != "test-key" || result[0].APIKey.Reveal() != testKey {
+		t.Errorf("expected test-key with the full key, got %s %q", result[0].Name, result[0].APIKey.Reveal())
 	}
 }
 
@@ -56,9 +52,7 @@ func TestCreateKey(t *testing.T) {
 			t.Errorf("failed to decode request: %v", err)
 		}
 		w.WriteHeader(http.StatusCreated)
-		if err := json.NewEncoder(w).Encode(APIKey{APIKey: "new-key", Name: input.Name, Enabled: true}); err != nil {
-			t.Errorf("failed to write response: %v", err)
-		}
+		_, _ = w.Write([]byte(`{"api_key":"` + testKey + `","name":"` + input.Name + `","enabled":true}`))
 	}))
 	defer server.Close()
 
@@ -68,14 +62,14 @@ func TestCreateKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Name != "my-key" {
-		t.Errorf("expected my-key, got %s", result.Name)
+	if result.Name != "my-key" || result.APIKey.Reveal() != testKey {
+		t.Errorf("expected my-key with the full key, got %s %q", result.Name, result.APIKey.Reveal())
 	}
 }
 
 func TestUpdateSendsFullPayload(t *testing.T) {
 	current := APIKey{
-		APIKey:       "abc-123",
+		APIKey:       NewSecret("abc-123"),
 		Name:         "old-name",
 		Enabled:      true,
 		DailyQuota:   nil,
@@ -86,25 +80,13 @@ func TestUpdateSendsFullPayload(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v4/organization/apikeys":
-			if err := json.NewEncoder(w).Encode([]APIKey{current}); err != nil {
-				t.Errorf("failed to write response: %v", err)
-			}
 		case r.Method == http.MethodPost && r.URL.Path == "/v4/organization/apikeys/abc-123":
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
 				t.Fatalf("failed to read body: %v", err)
 			}
 			updateBody = string(body)
-			if err := json.NewEncoder(w).Encode(APIKey{
-				APIKey:       "abc-123",
-				Name:         "new-name",
-				Enabled:      true,
-				DailyQuota:   nil,
-				MonthlyQuota: nil,
-			}); err != nil {
-				t.Errorf("failed to write response: %v", err)
-			}
+			_, _ = w.Write([]byte(`{"api_key":"abc-123","name":"new-name","enabled":true}`))
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
@@ -114,7 +96,7 @@ func TestUpdateSendsFullPayload(t *testing.T) {
 	client := NewClient(server.URL, "token")
 	ka := NewKeysAPI(client)
 	name := "new-name"
-	_, err := ka.Update("abc-123", UpdateKeyInput{Name: &name})
+	_, err := ka.Update(current, UpdateKeyInput{Name: &name})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -133,21 +115,32 @@ func TestUpdateSendsFullPayload(t *testing.T) {
 	}
 }
 
-func TestUpdateMissingKey(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && r.URL.Path == "/v4/organization/apikeys" {
-			_ = json.NewEncoder(w).Encode([]APIKey{{APIKey: "another-key"}})
-			return
+func TestFindKey(t *testing.T) {
+	keys := []APIKey{
+		{APIKey: NewSecret("9f1c2d3e-4b5a-6789-abcd-ef0123456789"), Name: "CI"},
+		{APIKey: NewSecret("1234abcd-0000-1111-2222-333344445555"), Name: "dup"},
+		{APIKey: NewSecret("5678abcd-0000-1111-2222-333344446666"), Name: "dup"},
+	}
+	for _, selector := range []string{"ci", "9f1c****6789", "9f1c2d3e-4b5a-6789-abcd-ef0123456789"} {
+		key, err := FindKey(keys, selector)
+		if err != nil || key.Name != "CI" {
+			t.Errorf("FindKey(%q) = %q, %v; want CI", selector, key.Name, err)
 		}
-		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-	}))
-	defer server.Close()
+	}
 
-	client := NewClient(server.URL, "token")
-	ka := NewKeysAPI(client)
-	_, err := ka.Update("missing-key", UpdateKeyInput{})
-	if err == nil {
-		t.Fatal("expected error when key is not found")
+	var lookupErr *KeyLookupError
+	if _, err := FindKey(keys, "missing"); !errors.As(err, &lookupErr) || lookupErr.Ambiguous {
+		t.Errorf("expected not-found lookup error, got %v", err)
+	}
+	_, err := FindKey(keys, "dup")
+	if !errors.As(err, &lookupErr) || !lookupErr.Ambiguous {
+		t.Fatalf("expected ambiguous lookup error, got %v", err)
+	}
+	if got := strings.Join(lookupErr.Candidates, ", "); got != "dup (1234****5555), dup (5678****6666)" {
+		t.Errorf("unexpected candidates %q", got)
+	}
+	if strings.Contains(err.Error(), "abcd-0000") {
+		t.Errorf("lookup error leaks a key: %v", err)
 	}
 }
 
@@ -158,24 +151,12 @@ func TestUpdateRetriesTimeoutOnce(t *testing.T) {
 	client.httpClient = &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			switch {
-			case req.Method == http.MethodGet && req.URL.Path == "/v4/organization/apikeys":
-				body, _ := json.Marshal([]APIKey{{
-					APIKey:  "abc-123",
-					Name:    "key",
-					Enabled: true,
-				}})
-				return jsonResponse(req, http.StatusOK, body), nil
 			case req.Method == http.MethodPost && req.URL.Path == "/v4/organization/apikeys/abc-123":
 				count := atomic.AddInt32(&postCount, 1)
 				if count == 1 {
 					return nil, timeoutErr{err: context.DeadlineExceeded}
 				}
-				body, _ := json.Marshal(APIKey{
-					APIKey:  "abc-123",
-					Name:    "renamed",
-					Enabled: true,
-				})
-				return jsonResponse(req, http.StatusOK, body), nil
+				return jsonResponse(req, http.StatusOK, []byte(`{"api_key":"abc-123","name":"renamed","enabled":true}`)), nil
 			default:
 				t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
 				return nil, context.Canceled
@@ -185,7 +166,7 @@ func TestUpdateRetriesTimeoutOnce(t *testing.T) {
 
 	ka := NewKeysAPI(client)
 	name := "renamed"
-	key, err := ka.Update("abc-123", UpdateKeyInput{Name: &name})
+	key, err := ka.Update(APIKey{APIKey: NewSecret("abc-123"), Name: "key", Enabled: true}, UpdateKeyInput{Name: &name})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -211,7 +192,7 @@ func TestDeleteKey(t *testing.T) {
 	client := NewClient(server.URL, "token")
 	ka := NewKeysAPI(client)
 
-	result, err := ka.Delete("abc-123")
+	result, err := ka.Delete(NewSecret("abc-123"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -248,7 +229,7 @@ func TestDeleteKeyReturnsCleanupPendingDetails(t *testing.T) {
 	client := NewClient(server.URL, "token")
 	ka := NewKeysAPI(client)
 
-	result, err := ka.Delete("abc-123")
+	result, err := ka.Delete(NewSecret("abc-123"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -269,7 +250,7 @@ func TestDeleteKeyTreatsEmptyAcceptedResponseAsCleanupPending(t *testing.T) {
 	client := NewClient(server.URL, "token")
 	ka := NewKeysAPI(client)
 
-	result, err := ka.Delete("abc-123")
+	result, err := ka.Delete(NewSecret("abc-123"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -284,15 +265,9 @@ func TestDeleteKeyReturnsAPIError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "token")
-	ka := NewKeysAPI(client)
-
-	result, err := ka.Delete("missing")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if result != nil {
-		t.Fatalf("expected nil result on error, got %#v", result)
+	result, err := NewKeysAPI(NewClient(server.URL, "token")).Delete(NewSecret("missing"))
+	if err == nil || result != nil {
+		t.Fatalf("expected an error and no result, got %#v, %v", result, err)
 	}
 }
 

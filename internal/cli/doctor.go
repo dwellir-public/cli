@@ -107,7 +107,7 @@ var doctorCmd = &cobra.Command{
 					checks = append(checks, map[string]interface{}{
 						"name":    "api_verification",
 						"status":  "error",
-						"message": err.Error(),
+						"message": api.MaskKeyShapedValues(err.Error()),
 					})
 				} else {
 					checks = append(checks, map[string]interface{}{

@@ -38,6 +38,13 @@ func NewHumanFormatter(w io.Writer) *HumanFormatter {
 }
 
 func (f *HumanFormatter) Success(command string, data interface{}) error {
+	if notice, ok := data.(Notice); ok {
+		if err := f.Success(command, notice.Data); err != nil {
+			return err
+		}
+		_, err := fmt.Fprintf(f.w, "\nNote: %s\n", notice.Text)
+		return err
+	}
 	// JSON and TOON report the cursor in meta (successResponse); human output
 	// prints it after the rows.
 	if page, ok := data.(Page); ok {
@@ -259,7 +266,7 @@ func (f *HumanFormatter) writeSingleKey(data interface{}) error {
 		return f.Write(data)
 	}
 	return f.renderKeyValueRows([][2]string{
-		{"API key", key.APIKey},
+		{"API key", key.APIKey.Masked()},
 		{"Name", key.Name},
 		{"Enabled", yesNo(key.Enabled)},
 		{"Daily quota", formatQuota(key.DailyQuota)},
@@ -487,7 +494,7 @@ func (f *HumanFormatter) writeLogsFacets(data interface{}) error {
 		{title: "FQDNs", entries: facets.FQDNs},
 		{title: "RPC Methods", entries: facets.RPCMethods},
 		{title: "Origins", entries: facets.Origins},
-		{title: "API Keys", entries: facets.APIKeys},
+		{title: "API Keys", entries: keyFacetEntries(facets.APIKeys)},
 	}
 
 	hasContent := false
@@ -514,6 +521,19 @@ func (f *HumanFormatter) writeLogsFacets(data interface{}) error {
 		return err
 	}
 	return nil
+}
+
+// keyFacetEntries labels each masked key with its name when one is known.
+func keyFacetEntries(keys []api.KeyFacetEntry) []api.FacetEntry {
+	entries := make([]api.FacetEntry, 0, len(keys))
+	for _, key := range keys {
+		label := key.Value.Masked()
+		if key.Name != "" {
+			label = key.Name + " (" + label + ")"
+		}
+		entries = append(entries, api.FacetEntry{Value: label, Count: key.Count})
+	}
+	return entries
 }
 
 func (f *HumanFormatter) writeEndpoints(data interface{}) error {
@@ -1052,6 +1072,14 @@ func formatPremiumLabel(node api.Node) string {
 }
 
 func terminalWidthFromWriter(w io.Writer) int {
+	// Masking writers wrap the terminal; measure the file underneath.
+	for {
+		masking, ok := w.(keyMaskingWriter)
+		if !ok {
+			break
+		}
+		w = masking.w
+	}
 	file, ok := w.(*os.File)
 	if !ok {
 		return 0

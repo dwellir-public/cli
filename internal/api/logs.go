@@ -3,7 +3,8 @@ package api
 type ErrorLog struct {
 	Timestamp        string `json:"timestamp"`
 	RequestID        string `json:"request_id"`
-	APIKey           string `json:"api_key"`
+	APIKey           Secret `json:"api_key"`
+	APIKeyName       string `json:"api_key_name,omitempty"`
 	FQDN             string `json:"fqdn"`
 	StatusCode       int    `json:"response_status_code"`
 	StatusLabel      string `json:"response_status_label"`
@@ -21,14 +22,20 @@ type ErrorStats struct {
 }
 
 type ErrorFacets struct {
-	FQDNs      []FacetEntry `json:"fqdns,omitempty"`
-	RPCMethods []FacetEntry `json:"rpc_methods,omitempty"`
-	Origins    []FacetEntry `json:"origins,omitempty"`
-	APIKeys    []FacetEntry `json:"api_keys,omitempty"`
+	FQDNs      []FacetEntry    `json:"fqdns,omitempty"`
+	RPCMethods []FacetEntry    `json:"rpc_methods,omitempty"`
+	Origins    []FacetEntry    `json:"origins,omitempty"`
+	APIKeys    []KeyFacetEntry `json:"api_keys,omitempty"`
 }
 
 type FacetEntry struct {
 	Value string `json:"value"`
+	Count int    `json:"count"`
+}
+
+type KeyFacetEntry struct {
+	Value Secret `json:"value"`
+	Name  string `json:"name,omitempty"`
 	Count int    `json:"count"`
 }
 
@@ -74,7 +81,7 @@ type errorFacetsResponse struct {
 		Count  int    `json:"count"`
 	} `json:"origins,omitempty"`
 	APIKeys []struct {
-		APIKey string `json:"api_key"`
+		APIKey Secret `json:"api_key"`
 		Count  int    `json:"count"`
 	} `json:"api_keys,omitempty"`
 }
@@ -98,6 +105,9 @@ func (l *LogsAPI) Errors(filters map[string]interface{}) (*ErrorLogPage, error) 
 
 	var payload ErrorLogPage
 	err := l.client.Post("/v4/organization/logs/errors", req, &payload)
+	for i := range payload.Items {
+		payload.Items[i].ErrorMessage = MaskKeyShapedValues(payload.Items[i].ErrorMessage)
+	}
 	return &payload, err
 }
 
@@ -135,7 +145,7 @@ func (l *LogsAPI) Facets(filters map[string]interface{}) (*ErrorFacets, error) {
 		facets.Origins = append(facets.Origins, FacetEntry{Value: entry.Origin, Count: entry.Count})
 	}
 	for _, entry := range payload.APIKeys {
-		facets.APIKeys = append(facets.APIKeys, FacetEntry{Value: entry.APIKey, Count: entry.Count})
+		facets.APIKeys = append(facets.APIKeys, KeyFacetEntry{Value: entry.APIKey, Count: entry.Count})
 	}
 	return facets, nil
 }

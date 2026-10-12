@@ -2,6 +2,7 @@ package output
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -42,7 +43,7 @@ func TestHumanSuccess(t *testing.T) {
 	f := NewHumanFormatter(&buf)
 	err := f.Success("keys.list", []api.APIKey{
 		{
-			APIKey:       "abc-123",
+			APIKey:       api.NewSecret("abc-123"),
 			Name:         "test-key",
 			Enabled:      true,
 			DailyQuota:   nil,
@@ -390,5 +391,108 @@ func TestHumanPagePrintsNextCursor(t *testing.T) {
 	got := buf.String()
 	if !strings.Contains(got, "slow down") || !strings.Contains(got, "--cursor cursor-2") {
 		t.Fatalf("expected log row and next cursor hint, got:\n%s", got)
+	}
+}
+
+func TestFormattersMaskTypedKeyFields(t *testing.T) {
+	const full = "9f1c2d3e-4b5a-6789-abcd-ef0123456789"
+	key := api.NewSecret(full)
+	payloads := map[string]interface{}{
+		"keys.list":     []api.APIKey{{APIKey: key, Name: "ci"}},
+		"keys.create":   &api.APIKey{APIKey: key, Name: "ci"},
+		"usage.history": []api.UsageHistory{{APIKey: key, Requests: 1}},
+		"logs.errors":   Page{Items: []api.ErrorLog{{APIKey: key, APIKeyName: "ci"}}},
+		"logs.facets":   &api.ErrorFacets{APIKeys: []api.KeyFacetEntry{{Value: key, Name: "ci", Count: 2}}},
+	}
+	formatters := map[string]func(*bytes.Buffer) Formatter{
+		"json":  func(b *bytes.Buffer) Formatter { return NewJSONFormatter(b) },
+		"toon":  func(b *bytes.Buffer) Formatter { return NewTOONFormatter(b) },
+		"human": func(b *bytes.Buffer) Formatter { return NewHumanFormatter(b) },
+	}
+	for command, data := range payloads {
+		for name, newFormatter := range formatters {
+			var buf bytes.Buffer
+			if err := newFormatter(&buf).Success(command, data); err != nil {
+				t.Fatalf("%s %s: unexpected error: %v", name, command, err)
+			}
+			got := buf.String()
+			if strings.Contains(got, full) {
+				t.Errorf("%s %s: output contains the full key:\n%s", name, command, got)
+			}
+			// Human tables for usage and logs do not show a key column.
+			if name != "human" && !strings.Contains(got, "9f1c****6789") {
+				t.Errorf("%s %s: expected the masked key, got:\n%s", name, command, got)
+			}
+		}
+	}
+}
+
+func TestNewMasksKeysOutsideTypedFields(t *testing.T) {
+	seen := api.NewSecret("7a1d2c3b-0000-1111-2222-333344445555")
+	unseen := "0f9e8d7c-aaaa-bbbb-cccc-ddddeeeeffff"
+	for _, format := range []string{"json", "toon", "human"} {
+		var buf bytes.Buffer
+		f := New(format, &buf)
+		if err := f.Success("logs.errors", map[string]string{"message": "upstream rejected " + seen.Reveal()}); err != nil {
+			t.Fatalf("%s: unexpected error: %v", format, err)
+		}
+		_ = f.Error("not_found", "No endpoints found for '"+unseen+"'.", "Retry "+seen.Reveal())
+		got := buf.String()
+		if strings.Contains(got, seen.Reveal()) || strings.Contains(got, unseen) {
+			t.Errorf("%s: output contains a full key:\n%s", format, got)
+		}
+		if !strings.Contains(got, "7a1d****5555") || !strings.Contains(got, "0f9e****ffff") {
+			t.Errorf("%s: expected masked keys, got:\n%s", format, got)
+		}
+	}
+}
+
+func TestNoticeGoesToMetaOrAfterHumanOutput(t *testing.T) {
+	data := Notice{Data: Page{Items: []api.ErrorLog{{RequestID: "req-1"}}, NextCursor: "c2", HasMore: true}, Text: "Use keys copy."}
+
+	var buf bytes.Buffer
+	if err := NewJSONFormatter(&buf).Success("logs.errors", data); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{`"data":[{`, `"notice":"Use keys copy."`, `"next_cursor":"c2"`} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("expected %s in JSON output, got: %s", want, buf.String())
+		}
+	}
+
+	buf.Reset()
+	if err := NewHumanFormatter(&buf).Success("logs.errors", data); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := buf.String(); !strings.HasSuffix(got, "--cursor c2\n\nNote: Use keys copy.\n") {
+		t.Errorf("expected the notice after the rows and cursor, got:\n%s", got)
+	}
+}
+
+func TestErrorsWithoutHelpGetADefaultHint(t *testing.T) {
+	var buf bytes.Buffer
+	_ = New("json", &buf).Error("not_authenticated", "No token.", "")
+	if !strings.Contains(buf.String(), `"help":"Run 'dwellir auth login'`) {
+		t.Fatalf("expected the default hint, got: %s", buf.String())
+	}
+}
+
+func TestDiagnosticWriterMasksKeyShapedValues(t *testing.T) {
+	var buf bytes.Buffer
+	_, _ = NewDiagnosticWriter(&buf).Write([]byte("Unknown help topic [0f9e8d7c-aaaa-bbbb-cccc-ddddeeeeffff]\n"))
+	if got := buf.String(); got != "Unknown help topic [0f9e****ffff]\n" {
+		t.Fatalf("expected the UUID masked, got %q", got)
+	}
+}
+
+func TestTerminalWidthSeesThroughMaskingWriters(t *testing.T) {
+	tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+	if err != nil {
+		t.Skip("no terminal")
+	}
+	defer tty.Close()
+	direct := terminalWidthFromWriter(tty)
+	if got := terminalWidthFromWriter(NewDiagnosticWriter(NewKeyMaskingWriter(tty))); got != direct {
+		t.Fatalf("expected width %d through masking writers, got %d", direct, got)
 	}
 }

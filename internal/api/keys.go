@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 )
 
 const apiKeysBasePath = "/v4/organization/apikeys"
 
 type APIKey struct {
-	APIKey       string `json:"api_key"`
+	APIKey       Secret `json:"api_key"`
 	Name         string `json:"name"`
 	Enabled      bool   `json:"enabled"`
 	DailyQuota   *int   `json:"daily_quota,omitempty"`
@@ -61,12 +62,9 @@ func (k *KeysAPI) Create(input CreateKeyInput) (*APIKey, error) {
 	return &key, err
 }
 
-func (k *KeysAPI) Update(apiKey string, input UpdateKeyInput) (*APIKey, error) {
-	current, err := k.lookup(apiKey)
-	if err != nil {
-		return nil, err
-	}
-
+// Update sends the full key settings, starting from current, because the
+// API replaces every field.
+func (k *KeysAPI) Update(current APIKey, input UpdateKeyInput) (*APIKey, error) {
 	payload := struct {
 		Name         string `json:"name"`
 		Enabled      bool   `json:"enabled"`
@@ -92,18 +90,18 @@ func (k *KeysAPI) Update(apiKey string, input UpdateKeyInput) (*APIKey, error) {
 		payload.MonthlyQuota = input.MonthlyQuota
 	}
 
-	path := fmt.Sprintf("%s/%s", apiKeysBasePath, apiKey)
+	path := keyPath(current.APIKey)
 	var key APIKey
-	err = k.client.Post(path, payload, &key)
+	err := k.client.Post(path, payload, &key)
 	if err != nil && isTimeoutError(err) {
 		err = k.client.Post(path, payload, &key)
 	}
 	return &key, err
 }
 
-func (k *KeysAPI) Delete(apiKey string) (*DeleteKeyResult, error) {
+func (k *KeysAPI) Delete(key Secret) (*DeleteKeyResult, error) {
 	result := &deleteKeyResponse{}
-	statusCode, err := k.client.DeleteWithStatus(fmt.Sprintf("%s/%s", apiKeysBasePath, apiKey), result)
+	statusCode, err := k.client.DeleteWithStatus(keyPath(key), result)
 	if err != nil {
 		return nil, err
 	}
@@ -112,28 +110,65 @@ func (k *KeysAPI) Delete(apiKey string) (*DeleteKeyResult, error) {
 	}, nil
 }
 
-func (k *KeysAPI) Enable(apiKey string) (*APIKey, error) {
+func (k *KeysAPI) Enable(current APIKey) (*APIKey, error) {
 	enabled := true
-	return k.Update(apiKey, UpdateKeyInput{Enabled: &enabled})
+	return k.Update(current, UpdateKeyInput{Enabled: &enabled})
 }
 
-func (k *KeysAPI) Disable(apiKey string) (*APIKey, error) {
+func (k *KeysAPI) Disable(current APIKey) (*APIKey, error) {
 	enabled := false
-	return k.Update(apiKey, UpdateKeyInput{Enabled: &enabled})
+	return k.Update(current, UpdateKeyInput{Enabled: &enabled})
 }
 
-func (k *KeysAPI) lookup(apiKey string) (*APIKey, error) {
+// Find returns the one key that matches selector.
+func (k *KeysAPI) Find(selector string) (APIKey, error) {
 	keys, err := k.List()
 	if err != nil {
-		return nil, err
+		return APIKey{}, err
 	}
+	return FindKey(keys, selector)
+}
+
+// KeyLookupError reports a selector that matches no key or more than one.
+type KeyLookupError struct {
+	Ambiguous  bool
+	Candidates []string
+}
+
+func (e *KeyLookupError) Error() string {
+	if e.Ambiguous {
+		return "more than one API key matches; use a unique key name"
+	}
+	return "no API key matches that name or value"
+}
+
+// FindKey matches selector against a key name (case-insensitive), the masked
+// value the CLI prints, or the full value.
+func FindKey(keys []APIKey, selector string) (APIKey, error) {
+	selector = strings.TrimSpace(selector)
+	var matches []APIKey
 	for _, key := range keys {
-		if key.APIKey == apiKey {
-			copy := key
-			return &copy, nil
+		if selector != "" && (strings.EqualFold(strings.TrimSpace(key.Name), selector) ||
+			key.APIKey.Masked() == selector || key.APIKey.Reveal() == selector) {
+			matches = append(matches, key)
 		}
 	}
-	return nil, fmt.Errorf("api key not found: %s", apiKey)
+	switch len(matches) {
+	case 1:
+		return matches[0], nil
+	case 0:
+		return APIKey{}, &KeyLookupError{}
+	default:
+		candidates := make([]string, 0, len(matches))
+		for _, key := range matches {
+			candidates = append(candidates, fmt.Sprintf("%s (%s)", key.Name, key.APIKey.Masked()))
+		}
+		return APIKey{}, &KeyLookupError{Ambiguous: true, Candidates: candidates}
+	}
+}
+
+func keyPath(key Secret) string {
+	return fmt.Sprintf("%s/%s", apiKeysBasePath, key.Reveal())
 }
 
 func isTimeoutError(err error) bool {

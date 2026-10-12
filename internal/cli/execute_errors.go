@@ -14,6 +14,12 @@ func classifyExecutionError(err error) (code, message, help string) {
 			"Use endpoint subcommands instead.\nExample: dwellir endpoints get base\nTip: dwellir endpoints search <query>"
 	}
 
+	if strings.Contains(raw, "unknown flag: --show-secrets") {
+		return "validation_error",
+			"--show-secrets was removed: the CLI never prints full API keys.",
+			"Run 'dwellir keys copy <name>' to copy a key to the clipboard, or 'dwellir keys env <name>' to write DWELLIR_API_KEY to .env."
+	}
+
 	if strings.HasPrefix(raw, "unknown command ") {
 		return "validation_error", raw, "Run `dwellir --help` to view available commands."
 	}
