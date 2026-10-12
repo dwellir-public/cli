@@ -137,6 +137,25 @@ func matchesNetworkFilter(networkName, filter string) bool {
 	}
 }
 
+// PreferExactNetwork keeps only networks whose name equals the filter, when
+// any do. "Mainnet" then selects "Mainnet" and not also "Mainnet (Full)".
+func PreferExactNetwork(networks []Network, filter string) []Network {
+	filter = strings.TrimSpace(filter)
+	if filter == "" {
+		return networks
+	}
+	var exact []Network
+	for _, net := range networks {
+		if strings.EqualFold(strings.TrimSpace(net.Name), filter) {
+			exact = append(exact, net)
+		}
+	}
+	if len(exact) == 0 {
+		return networks
+	}
+	return exact
+}
+
 func filterNetwork(net Network, nodeType string, protocol string, network string) (Network, bool) {
 	if !matchesNetworkFilter(net.Name, network) {
 		return Network{}, false

@@ -174,3 +174,19 @@ func TestSearchEndpointsByProtocolFilter(t *testing.T) {
 		t.Fatalf("expected https endpoint to be removed for --protocol wss, got %q", wssOnly[0].Networks[0].Nodes[0].HTTPS)
 	}
 }
+
+func TestPreferExactNetwork(t *testing.T) {
+	networks := []Network{{Name: "Mainnet"}, {Name: "Mainnet (Full)"}}
+	for _, filter := range []string{"Mainnet", "mainnet"} {
+		got := PreferExactNetwork(networks, filter)
+		if len(got) != 1 || got[0].Name != "Mainnet" {
+			t.Fatalf("filter %q: expected only the exact Mainnet network, got %+v", filter, got)
+		}
+	}
+	if got := PreferExactNetwork(networks, "main"); len(got) != 2 {
+		t.Fatalf("expected no exact match to keep all networks, got %+v", got)
+	}
+	if got := PreferExactNetwork(networks, ""); len(got) != 2 {
+		t.Fatalf("expected empty filter to keep all networks, got %+v", got)
+	}
+}

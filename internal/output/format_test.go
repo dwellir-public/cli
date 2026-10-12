@@ -344,3 +344,51 @@ func TestTOONSuccess(t *testing.T) {
 		t.Fatalf("expected TOON (non-JSON) output, got:\n%s", got)
 	}
 }
+
+func TestJSONPageReportsCursorInMeta(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewJSONFormatter(&buf)
+	err := f.Success("logs.errors", Page{
+		Items:      []api.ErrorLog{{RequestID: "req-1"}},
+		NextCursor: "cursor-2",
+		HasMore:    true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := buf.String()
+	for _, want := range []string{`"data":[{`, `"request_id":"req-1"`, `"next_cursor":"cursor-2"`, `"has_more":true`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected %s in output, got: %s", want, got)
+		}
+	}
+}
+
+func TestJSONLastPageReportsHasMoreFalse(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewJSONFormatter(&buf)
+	if err := f.Success("logs.errors", Page{Items: []api.ErrorLog{}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := buf.String()
+	if !strings.Contains(got, `"has_more":false`) || strings.Contains(got, "next_cursor") {
+		t.Fatalf("expected has_more false and no cursor, got: %s", got)
+	}
+}
+
+func TestHumanPagePrintsNextCursor(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewHumanFormatter(&buf)
+	err := f.Success("logs.errors", Page{
+		Items:      []api.ErrorLog{{Timestamp: "2026-10-11T00:00:00Z", StatusCode: 429, ErrorMessage: "slow down"}},
+		NextCursor: "cursor-2",
+		HasMore:    true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := buf.String()
+	if !strings.Contains(got, "slow down") || !strings.Contains(got, "--cursor cursor-2") {
+		t.Fatalf("expected log row and next cursor hint, got:\n%s", got)
+	}
+}

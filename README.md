@@ -111,6 +111,8 @@ dwellir usage history --interval day
 dwellir logs errors --status-code 429 --limit 100
 ```
 
+`logs errors` returns `meta.has_more` and `meta.next_cursor`. Pass the cursor with `--cursor` to read the next page. Usage and log output masks API keys; add `--show-secrets` to print full values.
+
 ## Command Overview
 
 Top-level commands:

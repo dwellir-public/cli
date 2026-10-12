@@ -103,7 +103,7 @@ var usageHistoryCmd = &cobra.Command{
 			if rawErr != nil {
 				return formatCommandError(rawErr)
 			}
-			return getFormatter().Success("usage.history", raw)
+			return getFormatter().Success("usage.history", maskUsageHistory(raw))
 		}
 		return getFormatter().Success("usage.history", breakdown)
 	},
@@ -306,6 +306,7 @@ func init() {
 		sub.Flags().StringVar(&usageFQDN, "fqdn", "", "Filter by endpoint hostname (FQDN)")
 	}
 	usageHistoryCmd.Flags().StringVar(&usageMethod, "method", "", "Filter by RPC method")
+	usageHistoryCmd.Flags().BoolVar(&showSecrets, "show-secrets", false, secretFlagHelp)
 	usageCostsCmd.Flags().StringVar(&usageMethod, "method", "", "Filter by RPC method")
 
 	usageCmd.AddCommand(usageSummaryCmd, usageHistoryCmd, usageRPSCmd, usageMethodsCmd, usageCostsCmd, usageLimitsCmd)

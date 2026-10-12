@@ -3,7 +3,6 @@ package output
 import (
 	"encoding/json"
 	"io"
-	"time"
 )
 
 type JSONFormatter struct {
@@ -15,15 +14,7 @@ func NewJSONFormatter(w io.Writer) *JSONFormatter {
 }
 
 func (f *JSONFormatter) Success(command string, data interface{}) error {
-	resp := Response{
-		OK:   true,
-		Data: data,
-		Meta: &Meta{
-			Command:   command,
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-		},
-	}
-	return f.encode(resp)
+	return f.encode(successResponse(command, data))
 }
 
 func (f *JSONFormatter) Error(code string, message string, help string) error {

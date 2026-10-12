@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
@@ -77,6 +78,9 @@ func (options *projectOptions) run(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return formatCommandError(projectAPIError(err, "Could not retrieve endpoints."))
 	}
+	for i := range chains {
+		chains[i].Networks = api.PreferExactNetwork(chains[i].Networks, options.network)
+	}
 	node, err := projectNode(chains)
 	if err != nil {
 		return getFormatter().Error("validation_error", err.Error(), "Choose an exact network and --node-type.")
@@ -94,13 +98,20 @@ func (options *projectOptions) run(cmd *cobra.Command, _ []string) error {
 
 func projectNode(chains []api.Chain) (api.Node, error) {
 	var nodes []api.Node
+	var candidates []string
 	for _, chain := range chains {
 		for _, network := range chain.Networks {
 			nodes = append(nodes, network.Nodes...)
+			for _, node := range network.Nodes {
+				candidates = append(candidates, fmt.Sprintf("--network %q --node-type %s", network.Name, node.NodeType.Name))
+			}
 		}
 	}
+	if len(nodes) == 0 {
+		return api.Node{}, errors.New("no endpoint matches that chain, network, and node type")
+	}
 	if len(nodes) != 1 {
-		return api.Node{}, errors.New("select exactly one endpoint")
+		return api.Node{}, fmt.Errorf("select exactly one endpoint; %d match: %s", len(nodes), strings.Join(candidates, "; "))
 	}
 	node := nodes[0]
 	if node.HTTPS == "" && node.WSS == "" {

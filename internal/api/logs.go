@@ -48,7 +48,9 @@ type errorLogsFilter struct {
 	RPCMethods  []string `json:"rpc_methods,omitempty"`
 }
 
-type errorLogsResponse struct {
+// ErrorLogPage is one page of error logs. Pass NextCursor to the next request
+// to read the following page.
+type ErrorLogPage struct {
 	Items      []ErrorLog `json:"items"`
 	NextCursor string     `json:"next_cursor,omitempty"`
 	HasMore    bool       `json:"has_more"`
@@ -85,7 +87,7 @@ func NewLogsAPI(client *Client) *LogsAPI {
 	return &LogsAPI{client: client}
 }
 
-func (l *LogsAPI) Errors(filters map[string]interface{}) ([]ErrorLog, error) {
+func (l *LogsAPI) Errors(filters map[string]interface{}) (*ErrorLogPage, error) {
 	req := toErrorLogsRequest(filters)
 	if req.PageSize == 0 {
 		req.PageSize = 50
@@ -94,9 +96,9 @@ func (l *LogsAPI) Errors(filters map[string]interface{}) ([]ErrorLog, error) {
 		req.Order = "desc"
 	}
 
-	var payload errorLogsResponse
+	var payload ErrorLogPage
 	err := l.client.Post("/v4/organization/logs/errors", req, &payload)
-	return payload.Items, err
+	return &payload, err
 }
 
 func (l *LogsAPI) Stats(filters map[string]interface{}) ([]ErrorStats, error) {
