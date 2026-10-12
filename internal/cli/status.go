@@ -105,6 +105,16 @@ func newStatusAPI() (*api.StatusAPI, error) {
 }
 
 // statusFail renders an error and attaches the exit code for its error code.
+// isStatusCommand reports whether cmd is `dwellir status` or one of its subcommands.
+func isStatusCommand(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c == statusCmd {
+			return true
+		}
+	}
+	return false
+}
+
 func statusFail(code, message, help string) error {
 	return withExitCode(getFormatter().Error(code, message, help), code)
 }

@@ -136,7 +136,7 @@ func Execute() error {
 	}
 	defer telemetryClient.Close()
 
-	if err := rootCmd.Execute(); err != nil {
+	if cmd, err := rootCmd.ExecuteC(); err != nil {
 		var errorCode string
 		var renderedErr *output.RenderedError
 		if errors.As(err, &renderedErr) && renderedErr != nil && renderedErr.Code != "" {
@@ -154,7 +154,13 @@ func Execute() error {
 		if explicit := explicitOutputFromArgs(os.Args[1:]); explicit != "" {
 			f = output.New(explicit, rootCmd.OutOrStdout())
 		}
-		return f.Error(code, message, help)
+		rendered := f.Error(code, message, help)
+		// Cobra rejects arguments before RunE runs. Status commands document
+		// exit codes for every failure, so keep the classified code for them.
+		if isStatusCommand(cmd) {
+			return withExitCode(rendered, code)
+		}
+		return rendered
 	}
 	return nil
 }
