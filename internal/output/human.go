@@ -57,6 +57,9 @@ func (f *HumanFormatter) Success(command string, data interface{}) error {
 		_, err := fmt.Fprintf(f.w, "More results available. Next page: --cursor %s\n", page.NextCursor)
 		return err
 	}
+	if handled, err := f.writeStatusCommand(data); handled {
+		return err
+	}
 	switch command {
 	case "keys.list":
 		return f.writeKeysList(data)

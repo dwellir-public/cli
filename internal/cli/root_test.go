@@ -558,3 +558,39 @@ func TestTelemetryNeverUsesCachedOrganizationWithoutBackendIdentity(t *testing.T
 		})
 	}
 }
+
+func runExecuteForTest(t *testing.T, args ...string) error {
+	t.Helper()
+	t.Setenv("DWELLIR_CONFIG_DIR", t.TempDir())
+	resetOutputFlagsForTest(t)
+	clearAgentMarkers(t)
+	setStdoutTerminalForTest(t, true)
+
+	oldArgs := os.Args
+	oldTelemetry := telemetryClient
+	rootCmd.SetOut(io.Discard)
+	rootCmd.SetErr(io.Discard)
+	rootCmd.SetArgs(args)
+	telemetryClient = &fakeTelemetry{}
+	os.Args = append([]string{"dwellir"}, args...)
+	t.Cleanup(func() {
+		os.Args = oldArgs
+		telemetryClient = oldTelemetry
+		rootCmd.SetArgs(nil)
+	})
+	return Execute()
+}
+
+func TestExecute_StatusArgumentErrorsExitWithValidationCode(t *testing.T) {
+	err := runExecuteForTest(t, "status", "unsubscribe", "--json")
+	if got := ExitCode(err); got != exitValidation {
+		t.Fatalf("ExitCode() = %d, want %d (err: %v)", got, exitValidation, err)
+	}
+}
+
+func TestExecute_OtherArgumentErrorsKeepExitCodeOne(t *testing.T) {
+	err := runExecuteForTest(t, "get", "--json")
+	if got := ExitCode(err); got != exitError {
+		t.Fatalf("ExitCode() = %d, want %d (err: %v)", got, exitError, err)
+	}
+}
