@@ -467,3 +467,19 @@ func TestNoticeGoesToMetaOrAfterHumanOutput(t *testing.T) {
 		t.Errorf("expected the notice after the rows and cursor, got:\n%s", got)
 	}
 }
+
+func TestErrorsWithoutHelpGetADefaultHint(t *testing.T) {
+	var buf bytes.Buffer
+	_ = New("json", &buf).Error("not_authenticated", "No token.", "")
+	if !strings.Contains(buf.String(), `"help":"Run 'dwellir auth login'`) {
+		t.Fatalf("expected the default hint, got: %s", buf.String())
+	}
+}
+
+func TestDiagnosticWriterMasksKeyShapedValues(t *testing.T) {
+	var buf bytes.Buffer
+	_, _ = NewDiagnosticWriter(&buf).Write([]byte("Unknown help topic [0f9e8d7c-aaaa-bbbb-cccc-ddddeeeeffff]\n"))
+	if got := buf.String(); got != "Unknown help topic [0f9e****ffff]\n" {
+		t.Fatalf("expected the UUID masked, got %q", got)
+	}
+}

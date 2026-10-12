@@ -3,6 +3,7 @@ package output
 import (
 	"errors"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/dwellir-public/cli/internal/api"
@@ -93,8 +94,9 @@ func IsRenderedError(err error) bool {
 // New returns a Formatter based on the format string ("json" or "human").
 // It backs up api.Secret: output masks every key value the process has seen,
 // and errors also mask key-shaped values, such as a key passed as an argument.
+// An error without help gets the default hint for its code.
 func New(format string, w io.Writer) Formatter {
-	w = keyMaskingWriter{w: w}
+	w = NewKeyMaskingWriter(w)
 	if format == "json" {
 		return keyMaskingErrors{NewJSONFormatter(w)}
 	}
@@ -104,12 +106,28 @@ func New(format string, w io.Writer) Formatter {
 	return keyMaskingErrors{NewHumanFormatter(w)}
 }
 
+// NewKeyMaskingWriter masks every key value the process has seen.
+func NewKeyMaskingWriter(w io.Writer) io.Writer {
+	return keyMaskingWriter{w: w}
+}
+
+// NewDiagnosticWriter also masks key-shaped values. Use it for stderr, which
+// carries only diagnostics, help and usage text.
+func NewDiagnosticWriter(w io.Writer) io.Writer {
+	return keyMaskingWriter{w: w, keyShaped: true}
+}
+
 type keyMaskingWriter struct {
-	w io.Writer
+	w         io.Writer
+	keyShaped bool
 }
 
 func (m keyMaskingWriter) Write(p []byte) (int, error) {
-	if _, err := io.WriteString(m.w, api.MaskKnownKeys(string(p))); err != nil {
+	text := api.MaskKnownKeys(string(p))
+	if m.keyShaped {
+		text = api.MaskKeyShapedValues(text)
+	}
+	if _, err := io.WriteString(m.w, text); err != nil {
 		return 0, err
 	}
 	return len(p), nil
@@ -120,5 +138,29 @@ type keyMaskingErrors struct {
 }
 
 func (m keyMaskingErrors) Error(code string, message string, help string) error {
+	if strings.TrimSpace(help) == "" {
+		help = DefaultHelp(code)
+	}
 	return m.Formatter.Error(code, api.MaskKeyShapedValues(message), api.MaskKeyShapedValues(help))
+}
+
+// DefaultHelp names the next step for an error code, so every error tells an
+// agent or a person what to do instead.
+func DefaultHelp(code string) string {
+	switch code {
+	case "not_authenticated":
+		return "Run 'dwellir auth login', or set DWELLIR_TOKEN. Run 'dwellir doctor' to check the setup."
+	case "forbidden":
+		return "Run 'dwellir auth status' to check the account and organization, or 'dwellir auth login' to log in again."
+	case "not_found":
+		return "Check the name. List commands such as 'dwellir keys list' and 'dwellir endpoints list' show valid names."
+	case "rate_limited":
+		return "Wait a moment, then retry."
+	case "validation_error":
+		return "Run the command with --help to see valid arguments, flags and examples."
+	case "configuration_error":
+		return "Run 'dwellir doctor' to check the CLI configuration."
+	default:
+		return "Retry the command. If it fails again, run 'dwellir doctor' to check the CLI setup."
+	}
 }

@@ -76,8 +76,8 @@ func TestMaskKnownKeys(t *testing.T) {
 }
 
 func TestMaskKeyShapedValues(t *testing.T) {
-	got := MaskKeyShapedValues("bad key 0AB1C2D3-aaaa-bbbb-cccc-0123456789ab in request req-42")
-	if got != "bad key 0AB1****89ab in request req-42" {
+	got := MaskKeyShapedValues("bad key 0AB1C2D3-aaaa-bbbb-cccc-0123456789ab in DWELLIR_API_KEY_0ab1c2d3-aaaa-bbbb-cccc-0123456789ab")
+	if got != "bad key 0AB1****89ab in DWELLIR_API_KEY_0ab1****89ab" {
 		t.Fatalf("expected the UUID masked, got %q", got)
 	}
 }

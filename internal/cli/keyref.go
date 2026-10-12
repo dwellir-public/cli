@@ -16,6 +16,9 @@ import (
 const maskedKeysNotice = "API keys are masked and are never printed. To use one, run " +
 	"'dwellir keys copy <name>' to copy it to the clipboard, or 'dwellir keys env <name>' to write DWELLIR_API_KEY to .env."
 
+const deletedKeyNotice = "Requests that use the deleted key now fail. To replace it, run 'dwellir keys create --name <name>', " +
+	"then 'dwellir keys env <name>' to write it to .env, or 'dwellir keys copy <name>' to copy it to the clipboard."
+
 const endpointKeyNotice = "URLs contain a <key> placeholder. Run 'dwellir keys env <name>' to write DWELLIR_API_KEY to .env " +
 	"and replace <key> with it at runtime, or run 'dwellir project setup --chain <chain> --network <network> --key-name <name>' " +
 	"to write full URLs to .env."

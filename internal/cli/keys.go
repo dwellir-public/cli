@@ -142,7 +142,7 @@ var keysDeleteCmd = &cobra.Command{
 		if err != nil {
 			return formatCommandError(err)
 		}
-		return getFormatter().Success("keys.delete", deleteSuccessPayload(key, result))
+		return getFormatter().Success("keys.delete", output.Notice{Data: deleteSuccessPayload(key, result), Text: deletedKeyNotice})
 	},
 }
 
@@ -253,7 +253,7 @@ Example:
 		}
 		values := map[string]string{keyEnvVar: key.APIKey.Reveal()}
 		if err := config.WriteProjectEnv(dir, keyEnvFile, values, keyEnvReplace); err != nil {
-			return getFormatter().Error("configuration_error", err.Error(), "Use --env-file .env or --env-file .env.local. Pass --replace to overwrite an existing value, or --var to write another variable.")
+			return getFormatter().Error("configuration_error", err.Error(), projectEnvHelp+" Pass --var to write another variable.")
 		}
 		return getFormatter().Success("keys.env", map[string]interface{}{
 			"name": key.Name, "key": key.APIKey.Masked(), "file": keyEnvFile, "variable": keyEnvVar,

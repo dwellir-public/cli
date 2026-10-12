@@ -108,6 +108,24 @@ func init() {
 		trackTelemetryRunResult(true, "")
 	}
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	// Cobra prints help, usage and some errors itself. Route those through the
+	// same key masking as formatter output.
+	rootCmd.SetOut(output.NewKeyMaskingWriter(os.Stdout))
+	rootCmd.SetErr(output.NewDiagnosticWriter(os.Stderr))
+	// "dwellir help <topic>" echoes an unknown topic to stdout, which masks
+	// only known keys.
+	rootCmd.InitDefaultHelpCmd()
+	for _, cmd := range rootCmd.Commands() {
+		if cmd.Name() == "help" {
+			showHelp := cmd.Run
+			cmd.Run = func(c *cobra.Command, args []string) {
+				for i := range args {
+					args[i] = api.MaskKeyShapedValues(args[i])
+				}
+				showHelp(c, args)
+			}
+		}
+	}
 }
 
 func Execute() error {

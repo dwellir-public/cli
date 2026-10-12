@@ -91,6 +91,7 @@ func TestArgumentErrorsMaskKeys(t *testing.T) {
 	for _, args := range [][]string{
 		{"endpoints", "list", e2eKey},
 		{"keys", "create", "--name", "ci", "--daily-quota", e2eKey},
+		{"keys", "create", "--name", "ci", "--daily-quota", "KEY_" + e2eKey},
 		{e2eKey},
 	} {
 		for _, format := range []string{"--json", "--toon", "--human"} {
@@ -121,5 +122,39 @@ func TestRemovedShowSecretsFlagExplainsTheReplacement(t *testing.T) {
 	res := runCLI(t, "logs", "errors", "--show-secrets", "--json")
 	if res.exitCode == 0 || !strings.Contains(res.stdout, "--show-secrets was removed") || !strings.Contains(res.stdout, "dwellir keys env <name>") {
 		t.Fatalf("expected a removal error with a replacement hint, got %d\n%s", res.exitCode, res.stdout)
+	}
+}
+
+func TestCobraHelpMasksKeys(t *testing.T) {
+	res := runCLI(t, "help", e2eKey)
+	if output := res.stdout + res.stderr; strings.Contains(output, e2eKey) || !strings.Contains(output, "9f1c****6789") {
+		t.Fatalf("expected help output to mask the key, got:\n%s", output)
+	}
+}
+
+func TestDoctorMasksKeysInAPIErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"detail":"key `+e2eKey+` is revoked"}`, http.StatusForbidden)
+	}))
+	defer server.Close()
+	res := runCLIWithEnv(t, map[string]string{"DWELLIR_TOKEN": "test-token", "DWELLIR_API_URL": server.URL}, "doctor", "--verify-api", "--json")
+	if output := res.stdout + res.stderr; strings.Contains(output, e2eKey) {
+		t.Fatalf("doctor output contains the key:\n%s", output)
+	}
+}
+
+func TestKeysDeleteExplainsTheReplacement(t *testing.T) {
+	res := runCLIWithEnv(t, keysServer(t), "keys", "delete", "ci", "--json")
+	if res.exitCode != 0 || !strings.Contains(res.stdout, `"notice":"Requests that use the deleted key now fail`) {
+		t.Fatalf("expected a delete notice, got %d\n%s", res.exitCode, res.stdout)
+	}
+}
+
+func TestNetworkErrorsExplainTheNextStep(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	server.Close()
+	res := runCLIWithEnv(t, map[string]string{"DWELLIR_TOKEN": "test-token", "DWELLIR_API_URL": server.URL}, "keys", "list", "--json")
+	if !strings.Contains(res.stdout, `"code":"network_error"`) || !strings.Contains(res.stdout, "Check the network connection") {
+		t.Fatalf("expected a network error with a hint, got:\n%s", res.stdout)
 	}
 }

@@ -109,8 +109,9 @@ func MaskKnownKeys(text string) string {
 	return text
 }
 
-// Dwellir API keys are lowercase UUIDs.
-var keyShaped = regexp.MustCompile(`\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b`)
+// Dwellir API keys are lowercase UUIDs. The pattern has no word boundaries,
+// so a key joined to other text, such as KEY_<uuid>, still matches.
+var keyShaped = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
 
 // MaskKeyShapedValues masks every UUID in free text that can carry a key the
 // CLI has never seen: error messages, echoed arguments and log messages.
