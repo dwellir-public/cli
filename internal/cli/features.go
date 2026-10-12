@@ -26,3 +26,17 @@ const addonsEnvVar = "DWELLIR_ADDONS"
 func addonsEnabled() bool {
 	return parseBoolFlag(os.Getenv(addonsEnvVar))
 }
+
+// statusEnvVar gates the status command surface.
+const statusEnvVar = "DWELLIR_STATUS"
+
+// statusEnabled reports whether the status commands are registered for this run.
+//
+// The commands read the public API at status.dwellir.com, which is not deployed
+// yet (dwellir-public/status#28). The gate keeps a released binary from
+// shipping commands that would fail with HTTP 404. It follows the same rules as
+// addonsEnabled: registration is skipped when the gate is off, and deleting the
+// gate is the real release.
+func statusEnabled() bool {
+	return parseBoolFlag(os.Getenv(statusEnvVar))
+}
