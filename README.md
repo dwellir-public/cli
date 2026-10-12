@@ -145,6 +145,29 @@ dwellir --help
 dwellir <command> --help
 ```
 
+### Status commands (preview)
+
+`dwellir status` reads the public status API at `https://status.dwellir.com`. It needs no login.
+The commands are off by default until that API ships. Set `DWELLIR_STATUS=1` to turn them on.
+
+```bash
+dwellir status                                    # summary plus endpoints that are not operational
+dwellir status --all                              # every endpoint
+dwellir status --chain base --network ethereum/mainnet
+dwellir status components                         # valid --chain, --network, and --endpoint values
+dwellir status history --since 24h --status open
+dwellir status uptime --chain ethereum --range 30d
+dwellir status feed --chain base --slack          # prints "/feed subscribe <feed URL>"
+dwellir status subscribe --url https://hooks.slack.com/services/T/B/X --chain base --min-severity outage
+dwellir status unsubscribe 'https://status.dwellir.com/unsubscribe?token=...'
+```
+
+- `--chain` takes a chain slug, `--network` takes `<chain>/<network>`, and `--endpoint` takes an FQDN or an endpoint URL.
+- Repeat a filter flag or separate values with commas. An endpoint matches when any value matches.
+- `status feed` checks filter values against `status components` and fails on unknown values. `--no-validate` skips the check.
+- `status subscribe` prints the signing secret and the unsubscribe URL once. Store both.
+- Status commands exit `3` when the API returns HTTP 404 or no subscription matches, and `4` on invalid input or HTTP 400.
+
 ## Output Modes
 
 Every command supports:
@@ -244,6 +267,8 @@ dwellir doctor --verify-api
 - `DWELLIR_DOCS_INDEX_URL` — override docs index URL (default: `<docs-base>/llms.txt`)
 - `DWELLIR_POSTHOG_KEY` — override PostHog project API key for telemetry
 - `DWELLIR_POSTHOG_HOST` — override PostHog ingestion host (defaults to `https://eu.i.posthog.com`; useful for self-hosted PostHog)
+- `DWELLIR_STATUS` — enable the preview `dwellir status` commands (`1` or `0`, default `0`). They depend on status API routes that have not shipped. `dwellir doctor` reports the resolved state.
+- `DWELLIR_STATUS_URL` — override the status API base URL (default: `https://status.dwellir.com`). The `--status-url` flag takes precedence.
 - `DWELLIR_ADDONS` — enable the in-progress `dwellir addons` commands (`1` or `0`, default `0`). Off by default and unsupported: the surface is incomplete and depends on API changes that have not shipped. `dwellir doctor` reports the resolved state.
 
 Telemetry runs only against the production dashboard or Marly API. Custom and staging API URLs disable telemetry.
