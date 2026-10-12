@@ -14,9 +14,6 @@ import (
 )
 
 func TestListKeys(t *testing.T) {
-	keys := []APIKey{
-		{APIKey: NewSecret("abc-123"), Name: "test-key", Enabled: true},
-	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Errorf("expected GET, got %s", r.Method)
@@ -24,9 +21,7 @@ func TestListKeys(t *testing.T) {
 		if r.URL.Path != "/v4/organization/apikeys" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		if err := json.NewEncoder(w).Encode(keys); err != nil {
-			t.Errorf("failed to write response: %v", err)
-		}
+		_, _ = w.Write([]byte(`[{"api_key":"` + testKey + `","name":"test-key","enabled":true}]`))
 	}))
 	defer server.Close()
 
@@ -39,8 +34,8 @@ func TestListKeys(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 key, got %d", len(result))
 	}
-	if result[0].Name != "test-key" {
-		t.Errorf("expected test-key, got %s", result[0].Name)
+	if result[0].Name != "test-key" || result[0].APIKey.Reveal() != testKey {
+		t.Errorf("expected test-key with the full key, got %s %q", result[0].Name, result[0].APIKey.Reveal())
 	}
 }
 
@@ -57,9 +52,7 @@ func TestCreateKey(t *testing.T) {
 			t.Errorf("failed to decode request: %v", err)
 		}
 		w.WriteHeader(http.StatusCreated)
-		if err := json.NewEncoder(w).Encode(APIKey{APIKey: NewSecret("new-key"), Name: input.Name, Enabled: true}); err != nil {
-			t.Errorf("failed to write response: %v", err)
-		}
+		_, _ = w.Write([]byte(`{"api_key":"` + testKey + `","name":"` + input.Name + `","enabled":true}`))
 	}))
 	defer server.Close()
 
@@ -69,8 +62,8 @@ func TestCreateKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Name != "my-key" {
-		t.Errorf("expected my-key, got %s", result.Name)
+	if result.Name != "my-key" || result.APIKey.Reveal() != testKey {
+		t.Errorf("expected my-key with the full key, got %s %q", result.Name, result.APIKey.Reveal())
 	}
 }
 
@@ -93,15 +86,7 @@ func TestUpdateSendsFullPayload(t *testing.T) {
 				t.Fatalf("failed to read body: %v", err)
 			}
 			updateBody = string(body)
-			if err := json.NewEncoder(w).Encode(APIKey{
-				APIKey:       NewSecret("abc-123"),
-				Name:         "new-name",
-				Enabled:      true,
-				DailyQuota:   nil,
-				MonthlyQuota: nil,
-			}); err != nil {
-				t.Errorf("failed to write response: %v", err)
-			}
+			_, _ = w.Write([]byte(`{"api_key":"abc-123","name":"new-name","enabled":true}`))
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
@@ -171,12 +156,7 @@ func TestUpdateRetriesTimeoutOnce(t *testing.T) {
 				if count == 1 {
 					return nil, timeoutErr{err: context.DeadlineExceeded}
 				}
-				body, _ := json.Marshal(APIKey{
-					APIKey:  NewSecret("abc-123"),
-					Name:    "renamed",
-					Enabled: true,
-				})
-				return jsonResponse(req, http.StatusOK, body), nil
+				return jsonResponse(req, http.StatusOK, []byte(`{"api_key":"abc-123","name":"renamed","enabled":true}`)), nil
 			default:
 				t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
 				return nil, context.Canceled
@@ -279,25 +259,15 @@ func TestDeleteKeyTreatsEmptyAcceptedResponseAsCleanupPending(t *testing.T) {
 	}
 }
 
-func TestDeleteKeyErrorsNeverContainTheKey(t *testing.T) {
-	key := NewSecret("9f1c2d3e-4b5a-6789-abcd-ef0123456789")
+func TestDeleteKeyReturnsAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"detail":"no key at `+r.URL.Path+`"}`, http.StatusNotFound)
+		http.Error(w, `{"detail":"API key not found"}`, http.StatusNotFound)
 	}))
-	ka := NewKeysAPI(NewClient(server.URL, "token"))
+	defer server.Close()
 
-	result, err := ka.Delete(key)
+	result, err := NewKeysAPI(NewClient(server.URL, "token")).Delete(NewSecret("missing"))
 	if err == nil || result != nil {
 		t.Fatalf("expected an error and no result, got %#v, %v", result, err)
-	}
-	if strings.Contains(err.Error(), key.Reveal()) || !strings.Contains(err.Error(), key.Masked()) {
-		t.Fatalf("expected the API error to show only the masked key, got %v", err)
-	}
-
-	// A transport error names the request URL, and the URL path holds the key.
-	server.Close()
-	if _, err := ka.Delete(key); err == nil || strings.Contains(err.Error(), key.Reveal()) {
-		t.Fatalf("expected a transport error without the key, got %v", err)
 	}
 }
 

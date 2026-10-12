@@ -65,6 +65,9 @@ func TestKeysEnvWritesTheKeyWithoutPrintingIt(t *testing.T) {
 	if string(data) != "DWELLIR_API_KEY='"+e2eKey+"'\n" {
 		t.Fatalf("unexpected .env contents: %q", data)
 	}
+	if ignore, _ := os.ReadFile(filepath.Join(dir, ".gitignore")); string(ignore) != "/.env\n" {
+		t.Fatalf("unexpected .gitignore contents: %q", ignore)
+	}
 	info, _ := os.Stat(filepath.Join(dir, ".env"))
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("expected mode 0600, got %v", info.Mode().Perm())
@@ -81,5 +84,42 @@ func TestEndpointsKeyFlagIsRemoved(t *testing.T) {
 		if res.exitCode == 0 || !strings.Contains(res.stdout, "--key was removed") {
 			t.Fatalf("%v: expected a validation error for --key, got %d\n%s", args, res.exitCode, res.stdout)
 		}
+	}
+}
+
+func TestArgumentErrorsMaskKeys(t *testing.T) {
+	for _, args := range [][]string{
+		{"endpoints", "list", e2eKey},
+		{"keys", "create", "--name", "ci", "--daily-quota", e2eKey},
+		{e2eKey},
+	} {
+		for _, format := range []string{"--json", "--toon", "--human"} {
+			res := runCLI(t, append(args, format)...)
+			if res.exitCode == 0 {
+				t.Fatalf("%v %s: expected an error", args, format)
+			}
+			if output := res.stdout + res.stderr; strings.Contains(output, e2eKey) {
+				t.Fatalf("%v %s: error output contains the key:\n%s", args, format, output)
+			}
+		}
+	}
+}
+
+func TestMaskedOutputExplainsHowToUseAKey(t *testing.T) {
+	env := keysServer(t)
+	res := runCLIWithEnv(t, env, "keys", "list", "--json")
+	if !strings.Contains(res.stdout, `"notice":"API keys are masked`) || !strings.Contains(res.stdout, "dwellir keys copy <name>") {
+		t.Fatalf("expected a notice in meta, got: %s", res.stdout)
+	}
+	res = runCLIWithEnv(t, env, "keys", "list", "--human")
+	if !strings.Contains(res.stdout, "Note: API keys are masked") {
+		t.Fatalf("expected a human notice, got:\n%s", res.stdout)
+	}
+}
+
+func TestRemovedShowSecretsFlagExplainsTheReplacement(t *testing.T) {
+	res := runCLI(t, "logs", "errors", "--show-secrets", "--json")
+	if res.exitCode == 0 || !strings.Contains(res.stdout, "--show-secrets was removed") || !strings.Contains(res.stdout, "dwellir keys env <name>") {
+		t.Fatalf("expected a removal error with a replacement hint, got %d\n%s", res.exitCode, res.stdout)
 	}
 }

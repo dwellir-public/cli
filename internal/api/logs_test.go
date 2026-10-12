@@ -32,7 +32,7 @@ func TestLogsErrorsResponseWrapper(t *testing.T) {
 					"response_status_label": "Internal Server Error",
 					"request_rpc_methods":   "eth_call",
 					"request_http_method":   "POST",
-					"error_message":         "boom",
+					"error_message":         "bad URL https://rpc.example/9f1c2d3e-4b5a-6789-abcd-ef0123456789",
 					"backend_latency_ms":    10,
 					"total_latency_ms":      15,
 				},
@@ -50,6 +50,9 @@ func TestLogsErrorsResponseWrapper(t *testing.T) {
 	}
 	if len(page.Items) != 1 {
 		t.Fatalf("expected 1 log item, got %d", len(page.Items))
+	}
+	if got := page.Items[0].ErrorMessage; got != "bad URL https://rpc.example/9f1c****6789" {
+		t.Fatalf("expected the key in the message masked, got %q", got)
 	}
 	if page.NextCursor != "cursor-2" || !page.HasMore {
 		t.Fatalf("expected cursor-2 with has_more, got %q %v", page.NextCursor, page.HasMore)

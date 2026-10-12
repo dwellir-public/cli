@@ -1,12 +1,12 @@
 package cli
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -34,9 +34,9 @@ func TestDeleteSuccessPayloadMasksTheKey(t *testing.T) {
 	}
 }
 
-func TestResolveKeyFilter(t *testing.T) {
+func TestKeyFilterValue(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode([]map[string]string{{"api_key": testKeyValue, "name": "ci"}})
+		_, _ = w.Write([]byte(`[{"api_key":"` + testKeyValue + `","name":"ci"}]`))
 	}))
 	defer server.Close()
 	client := api.NewClient(server.URL, "token")
@@ -49,9 +49,8 @@ func TestResolveKeyFilter(t *testing.T) {
 		"":                   "",
 	}
 	for selector, want := range cases {
-		got := selector
-		if err := resolveKeyFilter(client, &got); err != nil || got != want {
-			t.Errorf("resolveKeyFilter(%q) = %q, %v; want %q", selector, got, err, want)
+		if got, err := keyFilterValue(client, selector); err != nil || got != want {
+			t.Errorf("keyFilterValue(%q) = %q, %v; want %q", selector, got, err, want)
 		}
 	}
 }
@@ -79,6 +78,7 @@ func TestClipboardToolsFollowTheDisplayServer(t *testing.T) {
 		{"linux", map[string]string{"DISPLAY": ":0"}, "xclip,xsel,clip.exe,termux-clipboard-set"},
 		{"freebsd", map[string]string{"WAYLAND_DISPLAY": "w", "DISPLAY": ":0"}, "wl-copy,xclip,xsel,clip.exe,termux-clipboard-set"},
 		{"linux", nil, "clip.exe,termux-clipboard-set"},
+		{"linux", map[string]string{"WSL_DISTRO_NAME": "Ubuntu", "WAYLAND_DISPLAY": "wayland-0"}, "clip.exe,wl-copy,termux-clipboard-set"},
 	}
 	for _, tc := range cases {
 		if got := names(clipboardTools(tc.goos, env(tc.env))); got != tc.want {
@@ -88,8 +88,8 @@ func TestClipboardToolsFollowTheDisplayServer(t *testing.T) {
 }
 
 func TestCopyToClipboardSendsTheKeyOnStdin(t *testing.T) {
-	if filepath.Separator != '/' {
-		t.Skip("uses a shell script as the clipboard tool")
+	if runtime.GOOS != "linux" {
+		t.Skip("fakes wl-copy, which only Linux selects")
 	}
 	dir := t.TempDir()
 	out := filepath.Join(dir, "clipboard")
@@ -100,6 +100,8 @@ func TestCopyToClipboardSendsTheKeyOnStdin(t *testing.T) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("WAYLAND_DISPLAY", "wayland-1")
 	t.Setenv("DISPLAY", "")
+	t.Setenv("WSL_DISTRO_NAME", "")
+	t.Setenv("WSL_INTEROP", "")
 
 	tool, err := copyToClipboard(testKeyValue)
 	if err != nil || tool != "wl-copy" {

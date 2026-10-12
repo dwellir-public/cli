@@ -393,7 +393,7 @@ func TestHumanPagePrintsNextCursor(t *testing.T) {
 	}
 }
 
-func TestNoFormatterPrintsAFullKey(t *testing.T) {
+func TestFormattersMaskTypedKeyFields(t *testing.T) {
 	const full = "9f1c2d3e-4b5a-6789-abcd-ef0123456789"
 	key := api.NewSecret(full)
 	payloads := map[string]interface{}{
@@ -423,5 +423,47 @@ func TestNoFormatterPrintsAFullKey(t *testing.T) {
 				t.Errorf("%s %s: expected the masked key, got:\n%s", name, command, got)
 			}
 		}
+	}
+}
+
+func TestNewMasksKeysOutsideTypedFields(t *testing.T) {
+	seen := api.NewSecret("7a1d2c3b-0000-1111-2222-333344445555")
+	unseen := "0f9e8d7c-aaaa-bbbb-cccc-ddddeeeeffff"
+	for _, format := range []string{"json", "toon", "human"} {
+		var buf bytes.Buffer
+		f := New(format, &buf)
+		if err := f.Success("logs.errors", map[string]string{"message": "upstream rejected " + seen.Reveal()}); err != nil {
+			t.Fatalf("%s: unexpected error: %v", format, err)
+		}
+		_ = f.Error("not_found", "No endpoints found for '"+unseen+"'.", "Retry "+seen.Reveal())
+		got := buf.String()
+		if strings.Contains(got, seen.Reveal()) || strings.Contains(got, unseen) {
+			t.Errorf("%s: output contains a full key:\n%s", format, got)
+		}
+		if !strings.Contains(got, "7a1d****5555") || !strings.Contains(got, "0f9e****ffff") {
+			t.Errorf("%s: expected masked keys, got:\n%s", format, got)
+		}
+	}
+}
+
+func TestNoticeGoesToMetaOrAfterHumanOutput(t *testing.T) {
+	data := Notice{Data: Page{Items: []api.ErrorLog{{RequestID: "req-1"}}, NextCursor: "c2", HasMore: true}, Text: "Use keys copy."}
+
+	var buf bytes.Buffer
+	if err := NewJSONFormatter(&buf).Success("logs.errors", data); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{`"data":[{`, `"notice":"Use keys copy."`, `"next_cursor":"c2"`} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("expected %s in JSON output, got: %s", want, buf.String())
+		}
+	}
+
+	buf.Reset()
+	if err := NewHumanFormatter(&buf).Success("logs.errors", data); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := buf.String(); !strings.HasSuffix(got, "--cursor c2\n\nNote: Use keys copy.\n") {
+		t.Errorf("expected the notice after the rows and cursor, got:\n%s", got)
 	}
 }

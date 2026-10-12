@@ -63,3 +63,21 @@ func TestSecretDecodesTheFullValue(t *testing.T) {
 		t.Fatalf("expected an empty usage key to be omitted, got %s", encoded)
 	}
 }
+
+func TestMaskKnownKeys(t *testing.T) {
+	seen := "5e0b9c1a-1111-2222-3333-444455556666"
+	NewSecret(seen)
+	NewSecret("short-key")
+
+	got := MaskKnownKeys("redirect to /apikeys/" + seen + " for short-key")
+	if got != "redirect to /apikeys/5e0b****6666 for short-key" {
+		t.Fatalf("expected the seen key masked and short values kept, got %q", got)
+	}
+}
+
+func TestMaskKeyShapedValues(t *testing.T) {
+	got := MaskKeyShapedValues("bad key 0AB1C2D3-aaaa-bbbb-cccc-0123456789ab in request req-42")
+	if got != "bad key 0AB1****89ab in request req-42" {
+		t.Fatalf("expected the UUID masked, got %q", got)
+	}
+}

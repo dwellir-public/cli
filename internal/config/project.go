@@ -32,7 +32,11 @@ func WriteProjectEnv(dir, filename string, values map[string]string, replace boo
 	rule := "/" + filename
 	ignoreLines := strings.Split(strings.TrimRight(string(ignore), "\r\n"), "\n")
 	if ignoreLines[len(ignoreLines)-1] != rule {
-		ignore = []byte(strings.TrimRight(string(ignore), "\n") + "\n" + rule + "\n")
+		existing := strings.TrimRight(string(ignore), "\n")
+		if existing != "" {
+			existing += "\n"
+		}
+		ignore = []byte(existing + rule + "\n")
 	}
 	if err := writePrivateAtomic(ignorePath, ignore); err != nil {
 		return err

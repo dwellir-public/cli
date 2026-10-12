@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io"
 	"time"
+
+	"github.com/dwellir-public/cli/internal/api"
 )
 
 // Response is the JSON envelope for all CLI output.
@@ -26,6 +28,14 @@ type Meta struct {
 	Profile    string `json:"profile,omitempty"`
 	NextCursor string `json:"next_cursor,omitempty"`
 	HasMore    *bool  `json:"has_more,omitempty"`
+	Notice     string `json:"notice,omitempty"`
+}
+
+// Notice attaches a hint to command data, such as how to use a masked key.
+// JSON and TOON report it in meta.notice; human output prints it last.
+type Notice struct {
+	Data interface{}
+	Text string
 }
 
 // Page is list data with a pagination cursor. Formatters print Items as the
@@ -40,6 +50,10 @@ func successResponse(command string, data interface{}) Response {
 	meta := &Meta{
 		Command:   command,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+	if notice, ok := data.(Notice); ok {
+		data = notice.Data
+		meta.Notice = notice.Text
 	}
 	if page, ok := data.(Page); ok {
 		data = page.Items
@@ -77,12 +91,34 @@ func IsRenderedError(err error) bool {
 }
 
 // New returns a Formatter based on the format string ("json" or "human").
+// It backs up api.Secret: output masks every key value the process has seen,
+// and errors also mask key-shaped values, such as a key passed as an argument.
 func New(format string, w io.Writer) Formatter {
+	w = keyMaskingWriter{w: w}
 	if format == "json" {
-		return NewJSONFormatter(w)
+		return keyMaskingErrors{NewJSONFormatter(w)}
 	}
 	if format == "toon" {
-		return NewTOONFormatter(w)
+		return keyMaskingErrors{NewTOONFormatter(w)}
 	}
-	return NewHumanFormatter(w)
+	return keyMaskingErrors{NewHumanFormatter(w)}
+}
+
+type keyMaskingWriter struct {
+	w io.Writer
+}
+
+func (m keyMaskingWriter) Write(p []byte) (int, error) {
+	if _, err := io.WriteString(m.w, api.MaskKnownKeys(string(p))); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+type keyMaskingErrors struct {
+	Formatter
+}
+
+func (m keyMaskingErrors) Error(code string, message string, help string) error {
+	return m.Formatter.Error(code, api.MaskKeyShapedValues(message), api.MaskKeyShapedValues(help))
 }

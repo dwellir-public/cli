@@ -90,7 +90,7 @@ func (k *KeysAPI) Update(current APIKey, input UpdateKeyInput) (*APIKey, error) 
 		payload.MonthlyQuota = input.MonthlyQuota
 	}
 
-	path := k.keyPath(current.APIKey)
+	path := keyPath(current.APIKey)
 	var key APIKey
 	err := k.client.Post(path, payload, &key)
 	if err != nil && isTimeoutError(err) {
@@ -101,7 +101,7 @@ func (k *KeysAPI) Update(current APIKey, input UpdateKeyInput) (*APIKey, error) 
 
 func (k *KeysAPI) Delete(key Secret) (*DeleteKeyResult, error) {
 	result := &deleteKeyResponse{}
-	statusCode, err := k.client.DeleteWithStatus(k.keyPath(key), result)
+	statusCode, err := k.client.DeleteWithStatus(keyPath(key), result)
 	if err != nil {
 		return nil, err
 	}
@@ -167,8 +167,7 @@ func FindKey(keys []APIKey, selector string) (APIKey, error) {
 	}
 }
 
-func (k *KeysAPI) keyPath(key Secret) string {
-	k.client.MaskInErrors(key)
+func keyPath(key Secret) string {
 	return fmt.Sprintf("%s/%s", apiKeysBasePath, key.Reveal())
 }
 

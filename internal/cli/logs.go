@@ -31,19 +31,21 @@ var logsErrorsCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
-		if err := resolveKeyFilter(client, &logKey); err != nil {
+		apiKey, err := keyFilterValue(client, logKey)
+		if err != nil {
 			return err
 		}
-		filters := buildLogFilters()
+		filters := buildLogFilters(apiKey)
 		page, err := api.NewLogsAPI(client).Errors(filters)
 		if err != nil {
 			return formatCommandError(err)
 		}
-		return getFormatter().Success("logs.errors", output.Page{
-			Items:      nameErrorLogs(client, page.Items),
+		rows := nameErrorLogs(client, page.Items)
+		return getFormatter().Success("logs.errors", withNotice(output.Page{
+			Items:      rows,
 			NextCursor: page.NextCursor,
 			HasMore:    page.HasMore,
-		})
+		}, len(rows) > 0, maskedKeysNotice))
 	},
 }
 
@@ -55,10 +57,11 @@ var logsStatsCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
-		if err := resolveKeyFilter(client, &logKey); err != nil {
+		apiKey, err := keyFilterValue(client, logKey)
+		if err != nil {
 			return err
 		}
-		filters := buildLogFilters()
+		filters := buildLogFilters(apiKey)
 		stats, err := api.NewLogsAPI(client).Stats(filters)
 		if err != nil {
 			return formatCommandError(err)
@@ -75,22 +78,24 @@ var logsFacetsCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
-		if err := resolveKeyFilter(client, &logKey); err != nil {
+		apiKey, err := keyFilterValue(client, logKey)
+		if err != nil {
 			return err
 		}
-		filters := buildLogFilters()
+		filters := buildLogFilters(apiKey)
 		facets, err := api.NewLogsAPI(client).Facets(filters)
 		if err != nil {
 			return formatCommandError(err)
 		}
-		return getFormatter().Success("logs.facets", nameKeyFacets(client, facets))
+		facets = nameKeyFacets(client, facets)
+		return getFormatter().Success("logs.facets", withNotice(facets, facets != nil && len(facets.APIKeys) > 0, maskedKeysNotice))
 	},
 }
 
-func buildLogFilters() map[string]interface{} {
+func buildLogFilters(apiKey string) map[string]interface{} {
 	filters := map[string]interface{}{}
-	if logKey != "" {
-		filters["api_key"] = logKey
+	if apiKey != "" {
+		filters["api_key"] = apiKey
 	}
 	if logEndpoint != "" {
 		filters["fqdn"] = logEndpoint

@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -62,7 +63,8 @@ var usageHistoryCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
-		if err := resolveKeyFilter(client, &usageAPIKey); err != nil {
+		apiKey, err := keyFilterValue(client, usageAPIKey)
+		if err != nil {
 			return err
 		}
 		window, err := resolveUsageWindow(usageInterval, usageFrom, usageTo)
@@ -87,7 +89,7 @@ var usageHistoryCmd = &cobra.Command{
 			window.Interval,
 			window.FormattedStart,
 			window.FormattedEnd,
-			usageAPIKey,
+			apiKey,
 			usageFQDN,
 			usageMethod,
 		)
@@ -99,16 +101,16 @@ var usageHistoryCmd = &cobra.Command{
 				window.Interval,
 				window.FormattedStart,
 				window.FormattedEnd,
-				usageAPIKey,
+				apiKey,
 				usageFQDN,
 				usageMethod,
 			)
 			if rawErr != nil {
 				return formatCommandError(rawErr)
 			}
-			return getFormatter().Success("usage.history", raw)
+			return getFormatter().Success("usage.history", withNotice(raw, usageRowsHaveKeys(raw), maskedKeysNotice))
 		}
-		return getFormatter().Success("usage.history", breakdown)
+		return getFormatter().Success("usage.history", withNotice(breakdown, usageGroupsAreKeys(breakdown), maskedKeysNotice))
 	},
 }
 
@@ -120,7 +122,8 @@ var usageRPSCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
-		if err := resolveKeyFilter(client, &usageAPIKey); err != nil {
+		apiKey, err := keyFilterValue(client, usageAPIKey)
+		if err != nil {
 			return err
 		}
 		window, err := resolveUsageWindow(usageInterval, usageFrom, usageTo)
@@ -144,7 +147,7 @@ var usageRPSCmd = &cobra.Command{
 			window.Interval,
 			window.FormattedStart,
 			window.FormattedEnd,
-			usageAPIKey,
+			apiKey,
 			usageFQDN,
 		)
 		if err != nil {
@@ -162,7 +165,8 @@ var usageMethodsCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
-		if err := resolveKeyFilter(client, &usageAPIKey); err != nil {
+		apiKey, err := keyFilterValue(client, usageAPIKey)
+		if err != nil {
 			return err
 		}
 		window, err := resolveUsageWindow(usageInterval, usageFrom, usageTo)
@@ -186,7 +190,7 @@ var usageMethodsCmd = &cobra.Command{
 			window.Interval,
 			window.FormattedStart,
 			window.FormattedEnd,
-			usageAPIKey,
+			apiKey,
 			usageFQDN,
 		)
 		if err != nil {
@@ -204,7 +208,8 @@ var usageCostsCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
-		if err := resolveKeyFilter(client, &usageAPIKey); err != nil {
+		apiKey, err := keyFilterValue(client, usageAPIKey)
+		if err != nil {
 			return err
 		}
 		window, err := resolveUsageWindow(usageInterval, usageFrom, usageTo)
@@ -243,7 +248,7 @@ var usageCostsCmd = &cobra.Command{
 			window.Interval,
 			window.FormattedStart,
 			window.FormattedEnd,
-			usageAPIKey,
+			apiKey,
 			usageFQDN,
 			usageMethod,
 		)
@@ -251,7 +256,7 @@ var usageCostsCmd = &cobra.Command{
 			return formatCommandError(err)
 		}
 
-		hasFilters := usageAPIKey != "" || usageFQDN != "" || usageMethod != ""
+		hasFilters := apiKey != "" || usageFQDN != "" || usageMethod != ""
 		basisRows := filteredRows
 		if hasFilters {
 			earliest := api.EarliestBillingPeriodStart(window.Start, window.End, info.CurrentSubscription)
@@ -322,4 +327,24 @@ func init() {
 
 	usageCmd.AddCommand(usageSummaryCmd, usageHistoryCmd, usageRPSCmd, usageMethodsCmd, usageCostsCmd, usageLimitsCmd)
 	rootCmd.AddCommand(usageCmd)
+}
+
+func usageRowsHaveKeys(rows []api.UsageHistory) bool {
+	for _, row := range rows {
+		if !row.APIKey.IsZero() {
+			return true
+		}
+	}
+	return false
+}
+
+// usageGroupsAreKeys reports a breakdown row grouped by a masked key, which
+// shows where a key has no name.
+func usageGroupsAreKeys(rows []api.UsageBreakdown) bool {
+	for _, row := range rows {
+		if strings.Contains(row.Group, "****") {
+			return true
+		}
+	}
+	return false
 }

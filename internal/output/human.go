@@ -38,6 +38,13 @@ func NewHumanFormatter(w io.Writer) *HumanFormatter {
 }
 
 func (f *HumanFormatter) Success(command string, data interface{}) error {
+	if notice, ok := data.(Notice); ok {
+		if err := f.Success(command, notice.Data); err != nil {
+			return err
+		}
+		_, err := fmt.Fprintf(f.w, "\nNote: %s\n", notice.Text)
+		return err
+	}
 	// JSON and TOON report the cursor in meta (successResponse); human output
 	// prints it after the rows.
 	if page, ok := data.(Page); ok {
@@ -53,16 +60,7 @@ func (f *HumanFormatter) Success(command string, data interface{}) error {
 	switch command {
 	case "keys.list":
 		return f.writeKeysList(data)
-	case "keys.create":
-		if err := f.writeSingleKey(data); err != nil {
-			return err
-		}
-		if key, ok := data.(*api.APIKey); ok && key != nil {
-			_, err := fmt.Fprintf(f.w, "Copy the key with: dwellir keys copy %q\n", key.Name)
-			return err
-		}
-		return nil
-	case "keys.update", "keys.enable", "keys.disable":
+	case "keys.create", "keys.update", "keys.enable", "keys.disable":
 		return f.writeSingleKey(data)
 	case "keys.delete":
 		return f.Write(data)

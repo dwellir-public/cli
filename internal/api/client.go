@@ -3,12 +3,10 @@ package api
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
@@ -27,15 +25,6 @@ type Client struct {
 	baseURL    string
 	token      string
 	httpClient *http.Client
-	secrets    []Secret
-}
-
-// MaskInErrors masks key wherever an API error body repeats it. Call it
-// before sending a key in a request path or body.
-func (c *Client) MaskInErrors(key Secret) {
-	if !key.IsZero() {
-		c.secrets = append(c.secrets, key)
-	}
 }
 
 func NewClient(baseURL, token string) *Client {
@@ -136,11 +125,6 @@ func (c *Client) doWithStatus(req *http.Request, result interface{}) (int, error
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		// *url.Error repeats the request URL, and key paths contain the key.
-		var urlErr *url.Error
-		if errors.As(err, &urlErr) {
-			err = urlErr.Err
-		}
 		return 0, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
@@ -157,13 +141,9 @@ func (c *Client) doWithStatus(req *http.Request, result interface{}) (int, error
 	}
 
 	if resp.StatusCode >= 400 {
-		masked := string(body)
-		for _, key := range c.secrets {
-			masked = strings.ReplaceAll(masked, key.Reveal(), key.Masked())
-		}
 		return resp.StatusCode, &APIError{
 			StatusCode: resp.StatusCode,
-			Body:       masked,
+			Body:       string(body),
 		}
 	}
 

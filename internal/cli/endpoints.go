@@ -54,7 +54,7 @@ var endpointsListCmd = &cobra.Command{
 		}
 		chains = applyPremiumEndpointAccess(client, chains)
 		f := getFormatter()
-		return f.Success("endpoints.list", chains)
+		return f.Success("endpoints.list", withNotice(chains, endpointsHaveKeyPlaceholder(chains), endpointKeyNotice))
 	},
 }
 
@@ -76,7 +76,7 @@ var endpointsSearchCmd = &cobra.Command{
 		}
 		chains = applyPremiumEndpointAccess(client, chains)
 		f := getFormatter()
-		return f.Success("endpoints.search", chains)
+		return f.Success("endpoints.search", withNotice(chains, endpointsHaveKeyPlaceholder(chains), endpointKeyNotice))
 	},
 }
 
@@ -101,7 +101,7 @@ var endpointsGetCmd = &cobra.Command{
 		if len(chains) == 0 {
 			return f.Error("not_found", "No endpoints found for '"+chainLookup+"'.", "Run 'dwellir endpoints list' to see all available chains.")
 		}
-		return f.Success("endpoints.get", chains)
+		return f.Success("endpoints.get", withNotice(chains, endpointsHaveKeyPlaceholder(chains), endpointKeyNotice))
 	},
 }
 
@@ -212,4 +212,17 @@ func applyPremiumEndpointAccess(client *api.Client, chains []api.Chain) []api.Ch
 	}
 
 	return api.ApplyPremiumEndpointLabels(chains, info)
+}
+
+func endpointsHaveKeyPlaceholder(chains []api.Chain) bool {
+	for _, chain := range chains {
+		for _, network := range chain.Networks {
+			for _, node := range network.Nodes {
+				if strings.Contains(node.HTTPS, "<key>") || strings.Contains(node.WSS, "<key>") {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

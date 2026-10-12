@@ -38,5 +38,7 @@ func (f *JSONFormatter) Write(data interface{}) error {
 
 func (f *JSONFormatter) encode(v interface{}) error {
 	enc := json.NewEncoder(f.w)
+	// Keep <name> and & readable: hints hold commands that agents copy.
+	enc.SetEscapeHTML(false)
 	return enc.Encode(v)
 }

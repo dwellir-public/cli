@@ -105,6 +105,9 @@ func (l *LogsAPI) Errors(filters map[string]interface{}) (*ErrorLogPage, error) 
 
 	var payload ErrorLogPage
 	err := l.client.Post("/v4/organization/logs/errors", req, &payload)
+	for i := range payload.Items {
+		payload.Items[i].ErrorMessage = MaskKeyShapedValues(payload.Items[i].ErrorMessage)
+	}
 	return &payload, err
 }
 
