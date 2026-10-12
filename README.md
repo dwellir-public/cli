@@ -145,10 +145,9 @@ dwellir --help
 dwellir <command> --help
 ```
 
-### Status commands (preview)
+### Status commands
 
 `dwellir status` reads the public status API at `https://status.dwellir.com`. It needs no login.
-The commands are off by default until that API ships. Set `DWELLIR_STATUS=1` to turn them on.
 
 ```bash
 dwellir status                                    # summary plus endpoints that are not operational
@@ -267,7 +266,6 @@ dwellir doctor --verify-api
 - `DWELLIR_DOCS_INDEX_URL` — override docs index URL (default: `<docs-base>/llms.txt`)
 - `DWELLIR_POSTHOG_KEY` — override PostHog project API key for telemetry
 - `DWELLIR_POSTHOG_HOST` — override PostHog ingestion host (defaults to `https://eu.i.posthog.com`; useful for self-hosted PostHog)
-- `DWELLIR_STATUS` — enable the preview `dwellir status` commands (`1` or `0`, default `0`). They depend on status API routes that have not shipped. `dwellir doctor` reports the resolved state.
 - `DWELLIR_STATUS_URL` — override the status API base URL (default: `https://status.dwellir.com`). The `--status-url` flag takes precedence.
 - `DWELLIR_ADDONS` — enable the in-progress `dwellir addons` commands (`1` or `0`, default `0`). Off by default and unsupported: the surface is incomplete and depends on API changes that have not shipped. `dwellir doctor` reports the resolved state.
 

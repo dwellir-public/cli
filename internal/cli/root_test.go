@@ -582,9 +582,6 @@ func runExecuteForTest(t *testing.T, args ...string) error {
 }
 
 func TestExecute_StatusArgumentErrorsExitWithValidationCode(t *testing.T) {
-	if !statusEnabled() {
-		t.Skip("status commands are not registered; run with DWELLIR_STATUS=1")
-	}
 	err := runExecuteForTest(t, "status", "unsubscribe", "--json")
 	if got := ExitCode(err); got != exitValidation {
 		t.Fatalf("ExitCode() = %d, want %d (err: %v)", got, exitValidation, err)

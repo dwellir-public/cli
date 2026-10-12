@@ -44,7 +44,7 @@
 
 A merge to `main` publishes a release, so unfinished work must land inert.
 
-- `internal/cli/features.go` holds the gates. `addonsEnabled()` reads `DWELLIR_ADDONS` and `statusEnabled()` reads `DWELLIR_STATUS` (both default off).
+- `internal/cli/features.go` holds the gates. `addonsEnabled()` reads `DWELLIR_ADDONS` (default off).
 - Gate the `rootCmd.AddCommand` call, not the command's behaviour. With the gate off the command does not exist: it is absent from `--help` and from completions, and it cannot be run. `Hidden: true` is not a gate — it still ships a working command.
 - A gate does not silence telemetry. Running an unregistered command still reports the generic failure event with `unknown_command` set, the same as any typo. Only the command's own event is suppressed.
 - Do not use a `//go:build` tag: it hides the code from `go test ./...` and from `golangci-lint`.

@@ -9,43 +9,13 @@ import (
 	"github.com/dwellir-public/cli/internal/output"
 )
 
-func TestStatusEnabled(t *testing.T) {
-	tests := []struct {
-		name  string
-		value string
-		want  bool
-	}{
-		{name: "unset defaults to off", value: "", want: false},
-		{name: "one enables", value: "1", want: true},
-		{name: "true enables", value: "true", want: true},
-		{name: "mixed case enables", value: "On", want: true},
-		{name: "zero disables", value: "0", want: false},
-		{name: "false disables", value: "false", want: false},
-		{name: "garbage disables", value: "maybe", want: false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv(statusEnvVar, tt.value)
-			if got := statusEnabled(); got != tt.want {
-				t.Fatalf("statusEnabled() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-// Registration happens in init(), so this asserts the state the test binary
-// started in. Run `go test` with DWELLIR_STATUS unset and with DWELLIR_STATUS=1
-// to cover both gate states.
-func TestStatusCommandRegistrationFollowsTheGate(t *testing.T) {
-	registered := false
+func TestStatusCommandIsRegistered(t *testing.T) {
 	for _, cmd := range rootCmd.Commands() {
-		if cmd.Name() == "status" {
-			registered = true
+		if cmd == statusCmd {
+			return
 		}
 	}
-	if registered != statusEnabled() {
-		t.Fatalf("status command registered = %v, but the gate is %v", registered, statusEnabled())
-	}
+	t.Fatal("status command is not registered on the root command")
 }
 
 func TestStatusSubcommandsAndFlags(t *testing.T) {

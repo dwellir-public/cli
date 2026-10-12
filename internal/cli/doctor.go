@@ -73,8 +73,6 @@ var doctorCmd = &cobra.Command{
 			"details": map[string]interface{}{
 				"addons_enabled": addonsEnabled(),
 				"addons_env":     os.Getenv(addonsEnvVar),
-				"status_enabled": statusEnabled(),
-				"status_env":     os.Getenv(statusEnvVar),
 			},
 		})
 

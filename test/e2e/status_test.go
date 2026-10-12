@@ -128,7 +128,7 @@ func (s *statusStub) called(path string) bool {
 }
 
 func statusEnv(serverURL string) map[string]string {
-	return map[string]string{"DWELLIR_STATUS": "1", "DWELLIR_STATUS_URL": serverURL}
+	return map[string]string{"DWELLIR_STATUS_URL": serverURL}
 }
 
 func runStatus(t *testing.T, stub *statusStub, args ...string) cliResult {
@@ -169,52 +169,11 @@ func statusData(t *testing.T, res cliResult) map[string]interface{} {
 	return data
 }
 
-// The gate keeps a released binary from shipping commands for an API that is
-// not deployed yet.
-func TestStatusIsUnknownCommandWhenTheGateIsOff(t *testing.T) {
-	for _, value := range []string{"", "0", "false"} {
-		t.Run("DWELLIR_STATUS="+value, func(t *testing.T) {
-			for _, args := range [][]string{{"status", "--json"}, {"status", "components", "--json"}} {
-				res := runCLIWithEnv(t, map[string]string{"DWELLIR_STATUS": value}, args...)
-				if res.exitCode == 0 {
-					t.Fatalf("%v: expected a non-zero exit, got 0\nstdout: %s", args, res.stdout)
-				}
-				if combined := res.stdout + res.stderr; !strings.Contains(combined, "unknown command") {
-					t.Fatalf("%v: expected an unknown command error, got:\n%s", args, combined)
-				}
-			}
-		})
-	}
-}
-
-func TestStatusHelpFollowsTheGate(t *testing.T) {
-	off := runCLIWithEnv(t, map[string]string{"DWELLIR_STATUS": "0"}, "--help")
-	expectExit(t, off, 0)
-	if strings.Contains(off.stdout, "status") {
-		t.Fatalf("--help must not mention status with the gate off:\n%s", off.stdout)
-	}
-
-	on := runCLIWithEnv(t, map[string]string{"DWELLIR_STATUS": "1"}, "--help")
-	expectExit(t, on, 0)
-	if !strings.Contains(on.stdout, "status") {
-		t.Fatalf("expected status in --help with the gate on:\n%s", on.stdout)
-	}
-}
-
-func TestDoctorReportsTheStatusGate(t *testing.T) {
-	for _, tt := range []struct {
-		env  string
-		want bool
-	}{{"0", false}, {"1", true}} {
-		t.Run("DWELLIR_STATUS="+tt.env, func(t *testing.T) {
-			res := runCLIWithEnv(t, map[string]string{"DWELLIR_STATUS": tt.env}, "doctor", "--json")
-			expectExit(t, res, 0)
-			check := findDoctorCheck(t, parseJSON(t, res.stdout), "feature_gates")
-			details, _ := check["details"].(map[string]interface{})
-			if details["status_enabled"] != tt.want || details["status_env"] != tt.env {
-				t.Fatalf("feature_gates details = %#v", details)
-			}
-		})
+func TestStatusAppearsInHelp(t *testing.T) {
+	res := runCLIWithEnv(t, nil, "--help")
+	expectExit(t, res, 0)
+	if !strings.Contains(res.stdout, "status") {
+		t.Fatalf("expected status in --help:\n%s", res.stdout)
 	}
 }
 

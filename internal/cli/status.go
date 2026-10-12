@@ -196,7 +196,5 @@ func init() {
 		statusUnsubscribeCmd,
 	)
 
-	if statusEnabled() {
-		rootCmd.AddCommand(statusCmd)
-	}
+	rootCmd.AddCommand(statusCmd)
 }
