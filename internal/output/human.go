@@ -53,7 +53,16 @@ func (f *HumanFormatter) Success(command string, data interface{}) error {
 	switch command {
 	case "keys.list":
 		return f.writeKeysList(data)
-	case "keys.create", "keys.update", "keys.enable", "keys.disable":
+	case "keys.create":
+		if err := f.writeSingleKey(data); err != nil {
+			return err
+		}
+		if key, ok := data.(*api.APIKey); ok && key != nil {
+			_, err := fmt.Fprintf(f.w, "Copy the key with: dwellir keys copy %q\n", key.Name)
+			return err
+		}
+		return nil
+	case "keys.update", "keys.enable", "keys.disable":
 		return f.writeSingleKey(data)
 	case "keys.delete":
 		return f.Write(data)
@@ -259,7 +268,7 @@ func (f *HumanFormatter) writeSingleKey(data interface{}) error {
 		return f.Write(data)
 	}
 	return f.renderKeyValueRows([][2]string{
-		{"API key", key.APIKey},
+		{"API key", key.APIKey.Masked()},
 		{"Name", key.Name},
 		{"Enabled", yesNo(key.Enabled)},
 		{"Daily quota", formatQuota(key.DailyQuota)},
@@ -487,7 +496,7 @@ func (f *HumanFormatter) writeLogsFacets(data interface{}) error {
 		{title: "FQDNs", entries: facets.FQDNs},
 		{title: "RPC Methods", entries: facets.RPCMethods},
 		{title: "Origins", entries: facets.Origins},
-		{title: "API Keys", entries: facets.APIKeys},
+		{title: "API Keys", entries: keyFacetEntries(facets.APIKeys)},
 	}
 
 	hasContent := false
@@ -514,6 +523,19 @@ func (f *HumanFormatter) writeLogsFacets(data interface{}) error {
 		return err
 	}
 	return nil
+}
+
+// keyFacetEntries labels each masked key with its name when one is known.
+func keyFacetEntries(keys []api.KeyFacetEntry) []api.FacetEntry {
+	entries := make([]api.FacetEntry, 0, len(keys))
+	for _, key := range keys {
+		label := key.Value.Masked()
+		if key.Name != "" {
+			label = key.Name + " (" + label + ")"
+		}
+		entries = append(entries, api.FacetEntry{Value: label, Count: key.Count})
+	}
+	return entries
 }
 
 func (f *HumanFormatter) writeEndpoints(data interface{}) error {

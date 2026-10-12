@@ -31,13 +31,16 @@ var logsErrorsCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
+		if err := resolveKeyFilter(client, &logKey); err != nil {
+			return err
+		}
 		filters := buildLogFilters()
 		page, err := api.NewLogsAPI(client).Errors(filters)
 		if err != nil {
 			return formatCommandError(err)
 		}
 		return getFormatter().Success("logs.errors", output.Page{
-			Items:      maskErrorLogs(page.Items),
+			Items:      nameErrorLogs(client, page.Items),
 			NextCursor: page.NextCursor,
 			HasMore:    page.HasMore,
 		})
@@ -51,6 +54,9 @@ var logsStatsCmd = &cobra.Command{
 		client, err := newAPIClient()
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
+		}
+		if err := resolveKeyFilter(client, &logKey); err != nil {
+			return err
 		}
 		filters := buildLogFilters()
 		stats, err := api.NewLogsAPI(client).Stats(filters)
@@ -69,12 +75,15 @@ var logsFacetsCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
+		if err := resolveKeyFilter(client, &logKey); err != nil {
+			return err
+		}
 		filters := buildLogFilters()
 		facets, err := api.NewLogsAPI(client).Facets(filters)
 		if err != nil {
 			return formatCommandError(err)
 		}
-		return getFormatter().Success("logs.facets", maskErrorFacets(facets))
+		return getFormatter().Success("logs.facets", nameKeyFacets(client, facets))
 	},
 }
 
@@ -109,15 +118,12 @@ func buildLogFilters() map[string]interface{} {
 
 func init() {
 	for _, cmd := range []*cobra.Command{logsErrorsCmd, logsStatsCmd, logsFacetsCmd} {
-		cmd.Flags().StringVar(&logKey, "key", "", "Filter by API key")
+		cmd.Flags().StringVar(&logKey, "key", "", "Filter by API key name or value")
 		cmd.Flags().StringVar(&logEndpoint, "endpoint", "", "Filter by FQDN")
 		cmd.Flags().IntVar(&logStatusCode, "status-code", 0, "Filter by HTTP status code")
 		cmd.Flags().StringVar(&logRPCMethod, "rpc-method", "", "Filter by RPC method")
 		cmd.Flags().StringVar(&logFrom, "from", "", "Start time (RFC3339)")
 		cmd.Flags().StringVar(&logTo, "to", "", "End time (RFC3339)")
-	}
-	for _, cmd := range []*cobra.Command{logsErrorsCmd, logsFacetsCmd} {
-		cmd.Flags().BoolVar(&showSecrets, "show-secrets", false, secretFlagHelp)
 	}
 	logsErrorsCmd.Flags().IntVar(&logLimit, "limit", 50, "Max results")
 	logsErrorsCmd.Flags().StringVar(&logCursor, "cursor", "", "Pagination cursor")

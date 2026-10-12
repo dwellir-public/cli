@@ -42,7 +42,7 @@ func TestHumanSuccess(t *testing.T) {
 	f := NewHumanFormatter(&buf)
 	err := f.Success("keys.list", []api.APIKey{
 		{
-			APIKey:       "abc-123",
+			APIKey:       api.NewSecret("abc-123"),
 			Name:         "test-key",
 			Enabled:      true,
 			DailyQuota:   nil,
@@ -390,5 +390,38 @@ func TestHumanPagePrintsNextCursor(t *testing.T) {
 	got := buf.String()
 	if !strings.Contains(got, "slow down") || !strings.Contains(got, "--cursor cursor-2") {
 		t.Fatalf("expected log row and next cursor hint, got:\n%s", got)
+	}
+}
+
+func TestNoFormatterPrintsAFullKey(t *testing.T) {
+	const full = "9f1c2d3e-4b5a-6789-abcd-ef0123456789"
+	key := api.NewSecret(full)
+	payloads := map[string]interface{}{
+		"keys.list":     []api.APIKey{{APIKey: key, Name: "ci"}},
+		"keys.create":   &api.APIKey{APIKey: key, Name: "ci"},
+		"usage.history": []api.UsageHistory{{APIKey: key, Requests: 1}},
+		"logs.errors":   Page{Items: []api.ErrorLog{{APIKey: key, APIKeyName: "ci"}}},
+		"logs.facets":   &api.ErrorFacets{APIKeys: []api.KeyFacetEntry{{Value: key, Name: "ci", Count: 2}}},
+	}
+	formatters := map[string]func(*bytes.Buffer) Formatter{
+		"json":  func(b *bytes.Buffer) Formatter { return NewJSONFormatter(b) },
+		"toon":  func(b *bytes.Buffer) Formatter { return NewTOONFormatter(b) },
+		"human": func(b *bytes.Buffer) Formatter { return NewHumanFormatter(b) },
+	}
+	for command, data := range payloads {
+		for name, newFormatter := range formatters {
+			var buf bytes.Buffer
+			if err := newFormatter(&buf).Success(command, data); err != nil {
+				t.Fatalf("%s %s: unexpected error: %v", name, command, err)
+			}
+			got := buf.String()
+			if strings.Contains(got, full) {
+				t.Errorf("%s %s: output contains the full key:\n%s", name, command, got)
+			}
+			// Human tables for usage and logs do not show a key column.
+			if name != "human" && !strings.Contains(got, "9f1c****6789") {
+				t.Errorf("%s %s: expected the masked key, got:\n%s", name, command, got)
+			}
+		}
 	}
 }

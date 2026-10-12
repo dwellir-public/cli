@@ -2,22 +2,39 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/dwellir-public/cli/internal/api"
+	"github.com/dwellir-public/cli/internal/config"
 )
 
 var (
 	keyName         string
 	keyDailyQuota   int
 	keyMonthlyQuota int
+	keyEnvFile      string
+	keyEnvVar       string
+	keyEnvReplace   bool
 )
+
+var envVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 var keysCmd = &cobra.Command{
 	Use:   "keys",
 	Short: "Manage API keys",
+	Long: `Manage API keys.
+
+The CLI never prints a full API key. Output shows keys masked, for example
+abcd****wxyz. Select a key by name, by masked value or by full value.
+
+To use a key:
+  dwellir keys copy <name>    Copy the key to the clipboard
+  dwellir keys env <name>     Write the key to .env
+  dwellir project setup       Write the key and endpoint URLs to .env`,
 }
 
 var keysListCmd = &cobra.Command{
@@ -77,7 +94,7 @@ var keysCreateCmd = &cobra.Command{
 }
 
 var keysUpdateCmd = &cobra.Command{
-	Use:   "update <key-id>",
+	Use:   "update <name>",
 	Short: "Update an API key",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 {
@@ -85,11 +102,11 @@ var keysUpdateCmd = &cobra.Command{
 		}
 		if len(args) == 0 {
 			return fmt.Errorf(
-				"missing required argument <key-id>\nExample: dwellir keys update <key-id> --name \"My Key\"",
+				"missing required argument <name>\nExample: dwellir keys update old-name --name \"My Key\"",
 			)
 		}
 		return fmt.Errorf(
-			"accepts 1 arg(s), received %d\nExample: dwellir keys update <key-id> --name \"My Key\"",
+			"accepts 1 arg(s), received %d\nExample: dwellir keys update old-name --name \"My Key\"",
 			len(args),
 		)
 	},
@@ -97,6 +114,10 @@ var keysUpdateCmd = &cobra.Command{
 		client, err := newAPIClient()
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
+		}
+		current, err := findKey(client, args[0])
+		if err != nil {
+			return err
 		}
 		input := api.UpdateKeyInput{}
 		if cmd.Flags().Changed("name") {
@@ -108,7 +129,7 @@ var keysUpdateCmd = &cobra.Command{
 		if cmd.Flags().Changed("monthly-quota") {
 			input.MonthlyQuota = &keyMonthlyQuota
 		}
-		key, err := api.NewKeysAPI(client).Update(args[0], input)
+		key, err := api.NewKeysAPI(client).Update(current, input)
 		if err != nil {
 			return formatCommandError(err)
 		}
@@ -117,7 +138,7 @@ var keysUpdateCmd = &cobra.Command{
 }
 
 var keysDeleteCmd = &cobra.Command{
-	Use:   "delete <key-id>",
+	Use:   "delete <name>",
 	Short: "Delete an API key",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -125,16 +146,20 @@ var keysDeleteCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
-		result, err := api.NewKeysAPI(client).Delete(args[0])
+		key, err := findKey(client, args[0])
+		if err != nil {
+			return err
+		}
+		result, err := api.NewKeysAPI(client).Delete(key.APIKey)
 		if err != nil {
 			return formatCommandError(err)
 		}
-		return getFormatter().Success("keys.delete", deleteSuccessPayload(args[0], result))
+		return getFormatter().Success("keys.delete", deleteSuccessPayload(key, result))
 	},
 }
 
-func deleteSuccessPayload(key string, result *api.DeleteKeyResult) map[string]interface{} {
-	payload := map[string]interface{}{"key": key, "status": "deleted"}
+func deleteSuccessPayload(key api.APIKey, result *api.DeleteKeyResult) map[string]interface{} {
+	payload := map[string]interface{}{"key": key.APIKey.Masked(), "name": key.Name, "status": "deleted"}
 	if result != nil && result.CleanupPending {
 		payload["status"] = "cleanup_pending"
 	}
@@ -142,7 +167,7 @@ func deleteSuccessPayload(key string, result *api.DeleteKeyResult) map[string]in
 }
 
 var keysEnableCmd = &cobra.Command{
-	Use:   "enable <key-id>",
+	Use:   "enable <name>",
 	Short: "Enable an API key",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -150,7 +175,11 @@ var keysEnableCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
-		key, err := api.NewKeysAPI(client).Enable(args[0])
+		current, err := findKey(client, args[0])
+		if err != nil {
+			return err
+		}
+		key, err := api.NewKeysAPI(client).Enable(current)
 		if err != nil {
 			return formatCommandError(err)
 		}
@@ -159,7 +188,7 @@ var keysEnableCmd = &cobra.Command{
 }
 
 var keysDisableCmd = &cobra.Command{
-	Use:   "disable <key-id>",
+	Use:   "disable <name>",
 	Short: "Disable an API key",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -167,11 +196,79 @@ var keysDisableCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
-		key, err := api.NewKeysAPI(client).Disable(args[0])
+		current, err := findKey(client, args[0])
+		if err != nil {
+			return err
+		}
+		key, err := api.NewKeysAPI(client).Disable(current)
 		if err != nil {
 			return formatCommandError(err)
 		}
 		return getFormatter().Success("keys.disable", key)
+	},
+}
+
+var keysCopyCmd = &cobra.Command{
+	Use:   "copy <name>",
+	Short: "Copy an API key to the clipboard without printing it",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client, err := newAPIClient()
+		if err != nil {
+			return getFormatter().Error("not_authenticated", err.Error(), "")
+		}
+		key, err := findKey(client, args[0])
+		if err != nil {
+			return err
+		}
+		tool, err := copyToClipboard(key.APIKey.Reveal())
+		if err != nil {
+			return getFormatter().Error("clipboard_unavailable", "Could not copy the key: "+err.Error()+".", clipboardHelp)
+		}
+		return getFormatter().Success("keys.copy", map[string]interface{}{
+			"name": key.Name, "key": key.APIKey.Masked(), "copied_with": tool,
+		})
+	},
+}
+
+var keysEnvCmd = &cobra.Command{
+	Use:   "env <name>",
+	Short: "Write an API key to an environment file without printing it",
+	Long: `Write an API key to an environment file without printing it.
+
+The file gets mode 0600 and an ignore rule in .gitignore. Files that Git
+tracks are rejected. An existing variable needs --replace.
+
+Example:
+  dwellir keys env my-key
+  dwellir keys env my-key --env-file .env.local --var MY_DWELLIR_KEY`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if !envVarName.MatchString(keyEnvVar) {
+			return getFormatter().Error("validation_error", "Invalid variable name for --var.", "Use letters, digits and underscores, for example DWELLIR_API_KEY.")
+		}
+		dir, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		if err := validateUntrackedEnv(dir, keyEnvFile); err != nil {
+			return getFormatter().Error("validation_error", err.Error(), "")
+		}
+		client, err := newAPIClient()
+		if err != nil {
+			return getFormatter().Error("not_authenticated", err.Error(), "")
+		}
+		key, err := findKey(client, args[0])
+		if err != nil {
+			return err
+		}
+		values := map[string]string{keyEnvVar: key.APIKey.Reveal()}
+		if err := config.WriteProjectEnv(dir, keyEnvFile, values, keyEnvReplace); err != nil {
+			return getFormatter().Error("configuration_error", err.Error(), "")
+		}
+		return getFormatter().Success("keys.env", map[string]interface{}{
+			"name": key.Name, "key": key.APIKey.Masked(), "file": keyEnvFile, "variable": keyEnvVar,
+		})
 	},
 }
 
@@ -184,6 +281,10 @@ func init() {
 	keysUpdateCmd.Flags().IntVar(&keyDailyQuota, "daily-quota", 0, "Daily request quota")
 	keysUpdateCmd.Flags().IntVar(&keyMonthlyQuota, "monthly-quota", 0, "Monthly request quota")
 
-	keysCmd.AddCommand(keysListCmd, keysCreateCmd, keysUpdateCmd, keysDeleteCmd, keysEnableCmd, keysDisableCmd)
+	keysEnvCmd.Flags().StringVar(&keyEnvFile, "env-file", ".env", "Environment file: .env or .env.local")
+	keysEnvCmd.Flags().StringVar(&keyEnvVar, "var", "DWELLIR_API_KEY", "Variable name")
+	keysEnvCmd.Flags().BoolVar(&keyEnvReplace, "replace", false, "Replace an existing value")
+
+	keysCmd.AddCommand(keysListCmd, keysCreateCmd, keysUpdateCmd, keysDeleteCmd, keysEnableCmd, keysDisableCmd, keysCopyCmd, keysEnvCmd)
 	rootCmd.AddCommand(keysCmd)
 }

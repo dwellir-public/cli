@@ -160,10 +160,10 @@ func createProjectKey(keys *api.KeysAPI, name string, daily, monthly *int) (stri
 	if err != nil {
 		return "", projectAPIError(err, "could not create project key; check account permissions")
 	}
-	if key.APIKey == "" {
+	if key.APIKey.IsZero() {
 		return "", errors.New("the account returned an empty key")
 	}
-	return key.APIKey, nil
+	return key.APIKey.Reveal(), nil
 }
 
 func init() { rootCmd.AddCommand(newProjectCommand()) }
@@ -216,10 +216,10 @@ func existingProjectKey(key api.APIKey, create string, daily, monthly *int) (str
 	if create != "" && (!quotaMatches(daily, key.DailyQuota) || !quotaMatches(monthly, key.MonthlyQuota)) {
 		return "", errors.New("existing key quotas differ; update the key explicitly before setup")
 	}
-	if key.APIKey == "" {
+	if key.APIKey.IsZero() {
 		return "", errors.New("the account returned an empty key")
 	}
-	return key.APIKey, nil
+	return key.APIKey.Reveal(), nil
 }
 
 func quotaMatches(requested, configured *int) bool {

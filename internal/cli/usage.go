@@ -62,6 +62,9 @@ var usageHistoryCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
+		if err := resolveKeyFilter(client, &usageAPIKey); err != nil {
+			return err
+		}
 		window, err := resolveUsageWindow(usageInterval, usageFrom, usageTo)
 		if err != nil {
 			return err
@@ -103,7 +106,7 @@ var usageHistoryCmd = &cobra.Command{
 			if rawErr != nil {
 				return formatCommandError(rawErr)
 			}
-			return getFormatter().Success("usage.history", maskUsageHistory(raw))
+			return getFormatter().Success("usage.history", raw)
 		}
 		return getFormatter().Success("usage.history", breakdown)
 	},
@@ -116,6 +119,9 @@ var usageRPSCmd = &cobra.Command{
 		client, err := newAPIClient()
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
+		}
+		if err := resolveKeyFilter(client, &usageAPIKey); err != nil {
+			return err
 		}
 		window, err := resolveUsageWindow(usageInterval, usageFrom, usageTo)
 		if err != nil {
@@ -156,6 +162,9 @@ var usageMethodsCmd = &cobra.Command{
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
 		}
+		if err := resolveKeyFilter(client, &usageAPIKey); err != nil {
+			return err
+		}
 		window, err := resolveUsageWindow(usageInterval, usageFrom, usageTo)
 		if err != nil {
 			return err
@@ -194,6 +203,9 @@ var usageCostsCmd = &cobra.Command{
 		client, err := newAPIClient()
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
+		}
+		if err := resolveKeyFilter(client, &usageAPIKey); err != nil {
+			return err
 		}
 		window, err := resolveUsageWindow(usageInterval, usageFrom, usageTo)
 		if err != nil {
@@ -302,11 +314,10 @@ func init() {
 		sub.Flags().StringVar(&usageInterval, "interval", "hour", "Aggregation interval (minute, hour, day). Default: hour.")
 		sub.Flags().StringVar(&usageFrom, "from", "", "Start time (RFC3339). Example: 2026-02-27T00:00:00Z")
 		sub.Flags().StringVar(&usageTo, "to", "", "End time (RFC3339). Example: 2026-02-27T23:59:59Z")
-		sub.Flags().StringVar(&usageAPIKey, "api-key", "", "Filter by API key value")
+		sub.Flags().StringVar(&usageAPIKey, "api-key", "", "Filter by API key name or value")
 		sub.Flags().StringVar(&usageFQDN, "fqdn", "", "Filter by endpoint hostname (FQDN)")
 	}
 	usageHistoryCmd.Flags().StringVar(&usageMethod, "method", "", "Filter by RPC method")
-	usageHistoryCmd.Flags().BoolVar(&showSecrets, "show-secrets", false, secretFlagHelp)
 	usageCostsCmd.Flags().StringVar(&usageMethod, "method", "", "Filter by RPC method")
 
 	usageCmd.AddCommand(usageSummaryCmd, usageHistoryCmd, usageRPSCmd, usageMethodsCmd, usageCostsCmd, usageLimitsCmd)

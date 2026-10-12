@@ -33,7 +33,7 @@ func (u *UsageSummary) UnmarshalJSON(data []byte) error {
 
 type UsageHistory struct {
 	Timestamp  string `json:"timestamp"`
-	APIKey     string `json:"api_key,omitempty"`
+	APIKey     Secret `json:"api_key,omitzero"`
 	APIKeyName string `json:"api_key_name,omitempty"`
 	Domain     string `json:"domain,omitempty"`
 	Method     string `json:"method,omitempty"`
@@ -304,7 +304,7 @@ func UsageAPIKey(row UsageHistory) string {
 	if strings.TrimSpace(row.APIKeyName) != "" {
 		return row.APIKeyName
 	}
-	return row.APIKey
+	return row.APIKey.Masked()
 }
 
 func UsageTimestamp(row UsageHistory) string {

@@ -60,7 +60,7 @@ func TestProjectAllowsUntrackedAndNewProject(t *testing.T) {
 
 func TestProjectKeyRejectsExplicitZeroQuotaMismatch(t *testing.T) {
 	limit := 100
-	key := api.APIKey{APIKey: "secret", Enabled: true, DailyQuota: &limit}
+	key := api.APIKey{APIKey: api.NewSecret("secret"), Enabled: true, DailyQuota: &limit}
 	if _, err := existingProjectKey(key, "project", new(int), nil); err == nil {
 		t.Fatal("accepted explicit unlimited quota for a limited key")
 	}

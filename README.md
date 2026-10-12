@@ -100,8 +100,16 @@ dwellir docs get https://www.dwellir.com/docs/hyperliquid/historical-data
 ```bash
 dwellir keys list
 dwellir keys create --name ci-key --daily-quota 100000
-dwellir keys disable <key-id>
+dwellir keys copy ci-key
+dwellir keys env ci-key
+dwellir keys disable ci-key
 ```
+
+The CLI never prints a full API key. Every output format shows keys masked, for example `9f1c****6789`.
+Select a key by name, by masked value, or by full value.
+To use a key, copy it to the clipboard with `keys copy`, or write it to `.env` with `keys env` or `project setup`.
+`keys copy` uses `pbcopy` on macOS, `clip.exe` on Windows and WSL, `wl-copy` on Wayland, `xclip` or `xsel` on X11, and `termux-clipboard-set` on Termux.
+Over SSH or in CI there is no clipboard, so use `keys env`.
 
 ### 5) Check usage and logs
 
@@ -111,7 +119,7 @@ dwellir usage history --interval day
 dwellir logs errors --status-code 429 --limit 100
 ```
 
-`logs errors` returns `meta.has_more` and `meta.next_cursor`. Pass the cursor with `--cursor` to read the next page. Usage and log output masks API keys; add `--show-secrets` to print full values.
+`logs errors` returns `meta.has_more` and `meta.next_cursor`. Pass the cursor with `--cursor` to read the next page. Log rows show each key masked, with its name. Filter by key name with `--api-key` on `usage` and `--key` on `logs`.
 
 ## Command Overview
 
@@ -120,7 +128,7 @@ Top-level commands:
 - `dwellir auth` — login/logout/status/token
 - `dwellir docs` — list/search/get public docs pages as markdown
 - `dwellir endpoints` — list/search/get chains and networks
-- `dwellir keys` — list/create/update/delete/enable/disable API keys
+- `dwellir keys` — list/create/update/delete/enable/disable API keys; copy/env to use one
 - `dwellir usage` — summary/history/rps analytics
 - `dwellir logs` — errors/stats/facets with filters
 - `dwellir account` — info/subscription

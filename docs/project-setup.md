@@ -8,6 +8,7 @@ dwellir project setup --chain ethereum --network mainnet --create-key my-project
 ```
 
 Use `--key-name my-project` to retrieve an existing enabled key.
+To write only the key, run `dwellir keys env my-project`. It uses the same file rules as setup.
 Key names must be unique. Setup rejects ambiguous endpoints; specify `--node-type` when needed.
 Use `dwellir endpoints list` to discover chain and network names.
 

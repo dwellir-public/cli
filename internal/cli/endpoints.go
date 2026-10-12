@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -20,8 +19,6 @@ var (
 	epNetwork   string
 	epKeyName   string
 )
-
-const endpointAutoKeySentinel = "__AUTO__"
 
 var endpointsCmd = &cobra.Command{
 	Use:   "endpoints",
@@ -45,11 +42,6 @@ var endpointsListCmd = &cobra.Command{
 	Short: "List all available endpoints",
 	Args:  endpointsListArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		selectorOverride, err := endpointOptionalKeySelectorFromArgs(cmd, args)
-		if err != nil {
-			return err
-		}
-
 		client, err := newAPIClient()
 		if err != nil {
 			f := getFormatter()
@@ -61,10 +53,6 @@ var endpointsListCmd = &cobra.Command{
 			return formatCommandError(err)
 		}
 		chains = applyPremiumEndpointAccess(client, chains)
-		chains, err = applyEndpointKey(cmd, client, chains, selectorOverride)
-		if err != nil {
-			return formatEndpointKeyError(err)
-		}
 		f := getFormatter()
 		return f.Success("endpoints.list", chains)
 	},
@@ -76,11 +64,6 @@ var endpointsSearchCmd = &cobra.Command{
 	Args:  endpointsSearchArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		query := args[0]
-		selectorOverride, err := endpointOptionalKeySelectorFromArgs(cmd, args[1:])
-		if err != nil {
-			return err
-		}
-
 		client, err := newAPIClient()
 		if err != nil {
 			f := getFormatter()
@@ -92,10 +75,6 @@ var endpointsSearchCmd = &cobra.Command{
 			return formatCommandError(err)
 		}
 		chains = applyPremiumEndpointAccess(client, chains)
-		chains, err = applyEndpointKey(cmd, client, chains, selectorOverride)
-		if err != nil {
-			return formatEndpointKeyError(err)
-		}
 		f := getFormatter()
 		return f.Success("endpoints.search", chains)
 	},
@@ -107,11 +86,6 @@ var endpointsGetCmd = &cobra.Command{
 	Args:  endpointsGetArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		chainLookup := args[0]
-		selectorOverride, err := endpointOptionalKeySelectorFromArgs(cmd, args[1:])
-		if err != nil {
-			return err
-		}
-
 		client, err := newAPIClient()
 		if err != nil {
 			f := getFormatter()
@@ -123,10 +97,6 @@ var endpointsGetCmd = &cobra.Command{
 			return formatCommandError(err)
 		}
 		chains = applyPremiumEndpointAccess(client, chains)
-		chains, err = applyEndpointKey(cmd, client, chains, selectorOverride)
-		if err != nil {
-			return formatEndpointKeyError(err)
-		}
 		f := getFormatter()
 		if len(chains) == 0 {
 			return f.Error("not_found", "No endpoints found for '"+chainLookup+"'.", "Run 'dwellir endpoints list' to see all available chains.")
@@ -140,9 +110,12 @@ func init() {
 	endpointsCmd.PersistentFlags().StringVar(&epNodeType, "node-type", "", "Filter by node type (full, archive)")
 	endpointsCmd.PersistentFlags().StringVar(&epProtocol, "protocol", "", "Filter by protocol (https, wss)")
 	endpointsCmd.PersistentFlags().StringVar(&epNetwork, "network", "", "Filter by network (mainnet, testnet, or network name)")
-	endpointsCmd.PersistentFlags().StringVar(&epKeyName, "key", "", "Insert API key into endpoint URLs (optional: pass key name or key value)")
+	// --key used to put the full key into the URLs. It stays defined so old
+	// scripts get a clear error instead of URLs that silently lack the key.
+	endpointsCmd.PersistentFlags().StringVar(&epKeyName, "key", "", "Removed: endpoint output never contains API keys")
 	if keyFlag := endpointsCmd.PersistentFlags().Lookup("key"); keyFlag != nil {
-		keyFlag.NoOptDefVal = endpointAutoKeySentinel
+		keyFlag.NoOptDefVal = " "
+		keyFlag.Hidden = true
 	}
 	endpointsCmd.AddCommand(endpointsListCmd, endpointsSearchCmd, endpointsGetCmd)
 	rootCmd.AddCommand(endpointsCmd)
@@ -160,43 +133,24 @@ func newAPIClient() (*api.Client, error) {
 	return api.NewClient(resolveAPIBaseURL(), token), nil
 }
 
-type endpointKeyError struct {
-	message string
-	help    string
-}
-
-func (e endpointKeyError) Error() string {
-	return e.message
-}
-
-func applyEndpointKey(cmd *cobra.Command, client *api.Client, chains []api.Chain, selectorOverride string) ([]api.Chain, error) {
-	if !cmd.Flags().Changed("key") || len(chains) == 0 {
-		return chains, nil
-	}
-
-	keys, err := api.NewKeysAPI(client).List()
-	if err != nil {
-		return nil, err
-	}
-
-	selector := strings.TrimSpace(epKeyName)
-	if strings.TrimSpace(selectorOverride) != "" {
-		selector = strings.TrimSpace(selectorOverride)
-	}
-	selectedKey, err := selectEndpointKey(keys, selector)
-	if err != nil {
-		return nil, err
-	}
-
-	return injectEndpointKey(chains, selectedKey), nil
-}
-
 func endpointsListArgs(cmd *cobra.Command, args []string) error {
-	_, err := endpointOptionalKeySelectorFromArgs(cmd, args)
-	return err
+	if err := rejectEndpointKeyFlag(cmd); err != nil {
+		return err
+	}
+	if len(args) > 0 {
+		return getFormatter().Error(
+			"validation_error",
+			fmt.Sprintf("Unexpected arguments: %s", strings.Join(args, " ")),
+			"Run `dwellir endpoints --help` to see valid syntax.",
+		)
+	}
+	return nil
 }
 
 func endpointsSearchArgs(cmd *cobra.Command, args []string) error {
+	if err := rejectEndpointKeyFlag(cmd); err != nil {
+		return err
+	}
 	if len(args) < 1 {
 		return getFormatter().Error(
 			"validation_error",
@@ -204,18 +158,20 @@ func endpointsSearchArgs(cmd *cobra.Command, args []string) error {
 			"Example: dwellir endpoints search base --network mainnet",
 		)
 	}
-	if len(args) > 2 {
+	if len(args) > 1 {
 		return getFormatter().Error(
 			"validation_error",
 			fmt.Sprintf("Too many arguments for endpoints search (got %d).", len(args)),
-			"Usage: dwellir endpoints search <query> [--key [name]]",
+			"Usage: dwellir endpoints search <query>",
 		)
 	}
-	_, err := endpointOptionalKeySelectorFromArgs(cmd, args[1:])
-	return err
+	return nil
 }
 
 func endpointsGetArgs(cmd *cobra.Command, args []string) error {
+	if err := rejectEndpointKeyFlag(cmd); err != nil {
+		return err
+	}
 	if len(args) < 1 {
 		return getFormatter().Error(
 			"validation_error",
@@ -223,102 +179,26 @@ func endpointsGetArgs(cmd *cobra.Command, args []string) error {
 			"Example: dwellir endpoints get base --network mainnet",
 		)
 	}
-	if len(args) > 2 {
+	if len(args) > 1 {
 		return getFormatter().Error(
 			"validation_error",
 			fmt.Sprintf("Too many arguments for endpoints get (got %d).", len(args)),
-			"Usage: dwellir endpoints get <chain> [--key [name]]",
+			"Usage: dwellir endpoints get <chain>",
 		)
 	}
-	_, err := endpointOptionalKeySelectorFromArgs(cmd, args[1:])
-	return err
+	return nil
 }
 
-func endpointOptionalKeySelectorFromArgs(cmd *cobra.Command, args []string) (string, error) {
-	if len(args) == 0 {
-		return "", nil
+func rejectEndpointKeyFlag(cmd *cobra.Command) error {
+	if !cmd.Flags().Changed("key") {
+		return nil
 	}
-
-	if len(args) > 1 {
-		return "", getFormatter().Error(
-			"validation_error",
-			fmt.Sprintf("Unexpected arguments: %s", strings.Join(args, " ")),
-			"Use --key with zero or one value.\nExamples:\n  dwellir endpoints get base --key\n  dwellir endpoints get base --key my-key",
-		)
-	}
-
-	if !cmd.Flags().Changed("key") || epKeyName != endpointAutoKeySentinel {
-		return "", getFormatter().Error(
-			"validation_error",
-			fmt.Sprintf("Unexpected argument: %s", args[0]),
-			"Run `dwellir endpoints --help` to see valid syntax.",
-		)
-	}
-
-	return strings.TrimSpace(args[0]), nil
-}
-
-func selectEndpointKey(keys []api.APIKey, selector string) (string, error) {
-	selector = strings.TrimSpace(selector)
-	if len(keys) == 0 {
-		return "", endpointKeyError{
-			message: "No API keys found to inject into endpoint URLs.",
-			help:    "Run 'dwellir keys create --name <name>' to create a key first.",
-		}
-	}
-
-	if selector == endpointAutoKeySentinel || selector == "" {
-		if len(keys) == 1 {
-			return keys[0].APIKey, nil
-		}
-		return "", endpointKeyError{
-			message: fmt.Sprintf("Found %d API keys; please choose one with --key <name>.", len(keys)),
-			help:    "Run 'dwellir keys list' to see available keys.",
-		}
-	}
-
-	var matched []api.APIKey
-	for _, key := range keys {
-		if strings.EqualFold(strings.TrimSpace(key.Name), selector) || key.APIKey == selector {
-			matched = append(matched, key)
-		}
-	}
-
-	switch len(matched) {
-	case 1:
-		return matched[0].APIKey, nil
-	case 0:
-		return "", endpointKeyError{
-			message: fmt.Sprintf("No API key matched %q.", selector),
-			help:    "Run 'dwellir keys list' and pass a key name with --key <name>.",
-		}
-	default:
-		return "", endpointKeyError{
-			message: fmt.Sprintf("Multiple API keys matched %q; please use a unique key name.", selector),
-			help:    "Run 'dwellir keys list' to choose a unique key name.",
-		}
-	}
-}
-
-func injectEndpointKey(chains []api.Chain, keyValue string) []api.Chain {
-	for chainIdx := range chains {
-		for netIdx := range chains[chainIdx].Networks {
-			for nodeIdx := range chains[chainIdx].Networks[netIdx].Nodes {
-				node := &chains[chainIdx].Networks[netIdx].Nodes[nodeIdx]
-				node.HTTPS = strings.ReplaceAll(node.HTTPS, "<key>", keyValue)
-				node.WSS = strings.ReplaceAll(node.WSS, "<key>", keyValue)
-			}
-		}
-	}
-	return chains
-}
-
-func formatEndpointKeyError(err error) error {
-	var keyErr endpointKeyError
-	if errors.As(err, &keyErr) {
-		return getFormatter().Error("validation_error", keyErr.message, keyErr.help)
-	}
-	return formatCommandError(err)
+	return getFormatter().Error(
+		"validation_error",
+		"--key was removed: endpoint output never contains API keys.",
+		"Endpoint URLs keep the <key> placeholder. Write the key with 'dwellir keys env <name>' and replace <key> "+
+			"with $DWELLIR_API_KEY at runtime, or run 'dwellir project setup' to write full URLs to .env.",
+	)
 }
 
 func applyPremiumEndpointAccess(client *api.Client, chains []api.Chain) []api.Chain {
