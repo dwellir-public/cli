@@ -83,6 +83,8 @@ jobs:
       - uses: golangci/golangci-lint-action@v9
         with:
           version: latest
+      - name: Check production file length
+        run: make file-length
 
   build:
     name: build
