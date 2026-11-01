@@ -34,8 +34,10 @@ func TestNewLoginMux_CallbackRejectsMissingToken(t *testing.T) {
 	}
 
 	select {
-	case <-errCh:
-		// expected
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("callback error is nil, want an error for the missing token")
+		}
 	default:
 		t.Fatal("expected callback error for missing token")
 	}
