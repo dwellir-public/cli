@@ -188,7 +188,7 @@ Example:
   dwellir keys rotate ci-key
   dwellir keys rotate ci-key --yes --json`,
 	Args: keyNameArg("dwellir keys rotate ci-key"),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: withRenderedExitCodes(func(cmd *cobra.Command, args []string) error {
 		// AGENTS.md allows a prompt only in an explicit --human run. Human is
 		// also the default format, so the flag itself must be set: a plain
 		// run never waits for input.
@@ -223,7 +223,7 @@ Example:
 			return formatRotateError(err, key)
 		}
 		return getFormatter().Success("keys.rotate", output.Notice{Data: rotated, Text: rotatedKeyNotice})
-	},
+	}),
 }
 
 func confirmRotate(cmd *cobra.Command, key api.APIKey) (bool, error) {
@@ -242,20 +242,28 @@ func confirmRotate(cmd *cobra.Command, key api.APIKey) (bool, error) {
 	}
 }
 
-// formatRotateError adds a hint when the response was lost: the API may have
-// rotated the key before the connection failed.
+// formatRotateError reports a failed rotation. A 4xx answer means the API
+// refused the request, so the key did not change. Anything else (a 5xx, a
+// lost response, a success without the new value) may come after the key
+// rotated, so the hint says to check the key list instead of retrying: a
+// retry by name would rotate the new value too.
 func formatRotateError(err error, key api.APIKey) error {
 	var apiErr *api.APIError
-	if errors.As(err, &apiErr) {
+	isAPIErr := errors.As(err, &apiErr)
+	if isAPIErr && apiErr.StatusCode < 500 {
 		return formatCommandError(err)
 	}
-	code := "error"
-	if strings.HasPrefix(err.Error(), "request failed") {
+	code, message := "error", err.Error()
+	switch {
+	case isAPIErr:
+		code, message = "api_error", fmt.Sprintf("Request failed with HTTP %d.", apiErr.StatusCode)
+	case strings.HasPrefix(err.Error(), "request failed"):
 		code = "network_error"
 	}
-	return getFormatter().Error(code, err.Error(), fmt.Sprintf(
-		"The key may have rotated before the response arrived. Run 'dwellir keys list' and check whether %q still shows %s.",
-		key.Name, key.APIKey.Masked()))
+	return getFormatter().Error(code, message, fmt.Sprintf(
+		"The key may have rotated anyway. Do not retry yet: run 'dwellir keys list' and check whether %q still shows %s. "+
+			"A different value means the rotation happened; use 'dwellir keys copy %s' to get it.",
+		key.Name, key.APIKey.Masked(), key.Name))
 }
 
 var keysEnableCmd = &cobra.Command{

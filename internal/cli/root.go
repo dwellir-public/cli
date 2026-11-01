@@ -147,6 +147,11 @@ func Execute() error {
 		trackTelemetryRunResult(false, errorCode)
 
 		if output.IsRenderedError(err) {
+			// An argument check that renders its own error (such as a missing
+			// key name) still exits with its documented code.
+			if documentsExitCodes(cmd) && ExitCode(err) == exitError {
+				return withExitCode(err, errorCode)
+			}
 			return err
 		}
 		code, message, help := classifyExecutionError(err)
@@ -155,9 +160,9 @@ func Execute() error {
 			f = output.New(explicit, rootCmd.OutOrStdout())
 		}
 		rendered := f.Error(code, message, help)
-		// Cobra rejects arguments before RunE runs. Status commands document
-		// exit codes for every failure, so keep the classified code for them.
-		if isStatusCommand(cmd) {
+		// Cobra rejects arguments before RunE runs. Commands that document
+		// exit codes for every failure keep the classified code here too.
+		if documentsExitCodes(cmd) {
 			return withExitCode(rendered, code)
 		}
 		return rendered

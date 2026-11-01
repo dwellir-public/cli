@@ -305,3 +305,59 @@ func TestKeysRotateLostResponseSaysTheKeyMayHaveRotated(t *testing.T) {
 		t.Fatalf("output contains the full key:\n%s", res.stdout)
 	}
 }
+
+func TestKeysRotateServerErrorSaysCheckBeforeRetrying(t *testing.T) {
+	var rotations int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`[{"api_key":"` + testKeyValue + `","name":"ci","enabled":true}]`))
+			return
+		}
+		// The rotation commits, then a proxy loses the answer.
+		atomic.AddInt32(&rotations, 1)
+		http.Error(w, "bad gateway", http.StatusBadGateway)
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("DWELLIR_API_URL", server.URL)
+	t.Setenv("DWELLIR_TOKEN", "test-token")
+
+	res := runKeysRotate(t, "", false, "ci", "--yes", "--json")
+	var rendered *output.RenderedError
+	if !errors.As(res.err, &rendered) || rendered.Code != "api_error" {
+		t.Fatalf("expected an api_error, got %v", res.err)
+	}
+	if !strings.Contains(res.stdout, "dwellir keys list") || !strings.Contains(res.stdout, "Do not retry yet") {
+		t.Fatalf("expected a hint to check the key list before retrying, got:\n%s", res.stdout)
+	}
+	if strings.Contains(res.stdout, "Retry the command") {
+		t.Fatalf("a 5xx after rotate must not advise a retry:\n%s", res.stdout)
+	}
+	if got := atomic.LoadInt32(&rotations); got != 1 {
+		t.Fatalf("expected exactly 1 rotate request, got %d", got)
+	}
+}
+
+func TestKeysRotateExitCodes(t *testing.T) {
+	cases := map[string]struct {
+		setup func(t *testing.T)
+		args  []string
+		want  int
+	}{
+		"no confirmation":  {func(t *testing.T) { rotateServer(t) }, []string{"ci", "--json"}, exitValidation},
+		"missing argument": {func(t *testing.T) { rotateServer(t) }, []string{"--yes", "--json"}, exitValidation},
+		"unknown key":      {func(t *testing.T) { rotateServer(t) }, []string{"nope", "--yes", "--json"}, exitNotFound},
+		"not signed in": {func(t *testing.T) {
+			t.Setenv("DWELLIR_TOKEN", "")
+			t.Setenv("DWELLIR_API_URL", "http://127.0.0.1:1")
+		}, []string{"ci", "--yes", "--json"}, exitAuth},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tc.setup(t)
+			res := runKeysRotate(t, "", false, tc.args...)
+			if got := ExitCode(res.err); got != tc.want {
+				t.Fatalf("exit code = %d, want %d\n%s", got, tc.want, res.stdout)
+			}
+		})
+	}
+}

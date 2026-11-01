@@ -119,8 +119,15 @@ func (k *KeysAPI) Rotate(key Secret) (*APIKey, error) {
 	if err := k.client.Post(keyPath(key)+"/rotate", nil, &rotated); err != nil {
 		return nil, err
 	}
+	if rotated.APIKey.IsZero() {
+		return nil, ErrRotateNoKey
+	}
 	return &rotated, nil
 }
+
+// ErrRotateNoKey means the API answered the rotate request with success but
+// without the new key value, so the outcome is unknown.
+var ErrRotateNoKey = errors.New("the API reported success but returned no new key value")
 
 func (k *KeysAPI) Enable(current APIKey) (*APIKey, error) {
 	enabled := true

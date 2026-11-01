@@ -63,7 +63,7 @@ func TestKeysRotateNeedsYesWithoutATerminal(t *testing.T) {
 	for _, format := range []string{"--json", "--toon", "--human"} {
 		res := runCLIWithEnv(t, env, "keys", "rotate", "ci", format)
 		output := res.stdout + res.stderr
-		if res.exitCode == 0 || !strings.Contains(output, "needs confirmation") || !strings.Contains(output, "--yes") {
+		if res.exitCode != 4 || !strings.Contains(output, "needs confirmation") || !strings.Contains(output, "--yes") {
 			t.Fatalf("%s: expected a confirmation error naming --yes, got %d\n%s", format, res.exitCode, output)
 		}
 		if format == "--json" && !strings.Contains(res.stdout, `"code":"validation_error"`) {

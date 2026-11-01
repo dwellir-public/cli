@@ -1,6 +1,12 @@
 package cli
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/spf13/cobra"
+
+	"github.com/dwellir-public/cli/internal/output"
+)
 
 // Exit codes from AGENTS.md.
 const (
@@ -52,4 +58,24 @@ func ExitCode(err error) int {
 		return coded.code
 	}
 	return exitError
+}
+
+// withRenderedExitCodes wraps a RunE so that every error it renders exits
+// with the code AGENTS.md lists for that error code.
+func withRenderedExitCodes(run func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		err := run(cmd, args)
+		var rendered *output.RenderedError
+		if errors.As(err, &rendered) {
+			return withExitCode(err, rendered.Code)
+		}
+		return err
+	}
+}
+
+// documentsExitCodes reports whether a command's argument errors keep their
+// classified exit code: the status commands, and keys rotate, which scripts
+// run unattended.
+func documentsExitCodes(cmd *cobra.Command) bool {
+	return isStatusCommand(cmd) || cmd == keysRotateCmd
 }

@@ -328,6 +328,22 @@ func TestRotateKeyReturnsAPIError(t *testing.T) {
 	}
 }
 
+func TestRotateKeyRejectsSuccessWithoutANewKey(t *testing.T) {
+	for name, body := range map[string]string{"empty": "", "null": "null", "object": "{}"} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(body))
+			}))
+			defer server.Close()
+
+			key, err := NewKeysAPI(NewClient(server.URL, "token")).Rotate(NewSecret("abc-123"))
+			if !errors.Is(err, ErrRotateNoKey) || key != nil {
+				t.Fatalf("expected ErrRotateNoKey and no key, got %#v, %v", key, err)
+			}
+		})
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
