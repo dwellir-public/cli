@@ -1,12 +1,16 @@
 package cli
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/dwellir-public/cli/internal/api"
 	"github.com/dwellir-public/cli/internal/config"
@@ -20,7 +24,13 @@ var (
 	keyEnvFile      string
 	keyEnvVar       string
 	keyEnvReplace   bool
+	keyRotateYes    bool
 )
+
+// stdinIsTerminal reports whether keys rotate can ask for confirmation.
+var stdinIsTerminal = func() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
+}
 
 var envVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
@@ -154,6 +164,108 @@ func deleteSuccessPayload(key api.APIKey, result *api.DeleteKeyResult) map[strin
 	return payload
 }
 
+const rotatedKeyNotice = "The old key value no longer works. Update every client that used it. " +
+	"The new value is masked and is never printed. To use it, run 'dwellir keys copy <name>' to copy it to the clipboard, " +
+	"or 'dwellir keys env <name> --replace' to update DWELLIR_API_KEY in .env."
+
+var keysRotateCmd = &cobra.Command{
+	Use:   "rotate <name>",
+	Short: "Give an API key a new value",
+	Long: `Give an API key a new value.
+
+The old value stops working at once. Every client that still uses it fails
+until you give it the new value. The key keeps its name, quotas, enabled
+state and IP whitelists.
+
+Rotating needs confirmation: pass --yes, or pass --human in a terminal
+to be asked first. Without either, the command rotates nothing.
+
+The CLI prints the new value masked. To use it:
+  dwellir keys copy <name>             Copy the new key to the clipboard
+  dwellir keys env <name> --replace    Update DWELLIR_API_KEY in .env
+
+Example:
+  dwellir keys rotate ci-key
+  dwellir keys rotate ci-key --yes --json`,
+	Args: keyNameArg("dwellir keys rotate ci-key"),
+	RunE: withRenderedExitCodes(func(cmd *cobra.Command, args []string) error {
+		// AGENTS.md allows a prompt only in an explicit --human run. Human is
+		// also the default format, so the flag itself must be set: a plain
+		// run never waits for input.
+		canPrompt := humanOutput && isHumanOutput() && stdinIsTerminal()
+		if !keyRotateYes && !canPrompt {
+			return getFormatter().Error("validation_error",
+				"Rotating a key needs confirmation.",
+				"The current key value stops working at once, and every client that still uses it fails. "+
+					"Pass --yes to confirm, or --human in a terminal to be asked, for example: dwellir keys rotate <name> --yes")
+		}
+		client, err := newAPIClient()
+		if err != nil {
+			return getFormatter().Error("not_authenticated", err.Error(), "")
+		}
+		key, err := findKey(client, args[0])
+		if err != nil {
+			return err
+		}
+		if !keyRotateYes {
+			confirmed, err := confirmRotate(cmd, key)
+			if err != nil {
+				return formatCommandError(err)
+			}
+			if !confirmed {
+				return getFormatter().Success("keys.rotate", map[string]interface{}{
+					"name": key.Name, "key": key.APIKey.Masked(), "status": "cancelled",
+				})
+			}
+		}
+		rotated, err := api.NewKeysAPI(client).Rotate(key.APIKey)
+		if err != nil {
+			return formatRotateError(err, key)
+		}
+		return getFormatter().Success("keys.rotate", output.Notice{Data: rotated, Text: rotatedKeyNotice})
+	}),
+}
+
+func confirmRotate(cmd *cobra.Command, key api.APIKey) (bool, error) {
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+		"Rotate API key %q (%s)? The current value stops working at once, and every client that still uses it will fail. [y/N]: ",
+		key.Name, key.APIKey.Masked())
+	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
+// formatRotateError reports a failed rotation. A 4xx answer means the API
+// refused the request, so the key did not change. Anything else (a 5xx, a
+// lost response, a success without the new value) may come after the key
+// rotated, so the hint says to check the key list instead of retrying: a
+// retry by name would rotate the new value too.
+func formatRotateError(err error, key api.APIKey) error {
+	var apiErr *api.APIError
+	isAPIErr := errors.As(err, &apiErr)
+	if isAPIErr && apiErr.StatusCode < 500 {
+		return formatCommandError(err)
+	}
+	code, message := "error", err.Error()
+	switch {
+	case isAPIErr:
+		code, message = "api_error", fmt.Sprintf("Request failed with HTTP %d.", apiErr.StatusCode)
+	case strings.HasPrefix(err.Error(), "request failed"):
+		code = "network_error"
+	}
+	return getFormatter().Error(code, message, fmt.Sprintf(
+		"The key may have rotated anyway. Do not retry yet: run 'dwellir keys list' and check whether %q still shows %s. "+
+			"A different value means the rotation happened; use 'dwellir keys copy %s' to get it.",
+		key.Name, key.APIKey.Masked(), key.Name))
+}
+
 var keysEnableCmd = &cobra.Command{
 	Use:   "enable <name>",
 	Short: "Enable an API key",
@@ -274,6 +386,8 @@ func init() {
 	keysEnvCmd.Flags().StringVar(&keyEnvVar, "var", "DWELLIR_API_KEY", "Variable name")
 	keysEnvCmd.Flags().BoolVar(&keyEnvReplace, "replace", false, "Replace an existing value")
 
-	keysCmd.AddCommand(keysListCmd, keysCreateCmd, keysUpdateCmd, keysDeleteCmd, keysEnableCmd, keysDisableCmd, keysCopyCmd, keysEnvCmd)
+	keysRotateCmd.Flags().BoolVarP(&keyRotateYes, "yes", "y", false, "Skip the confirmation prompt")
+
+	keysCmd.AddCommand(keysListCmd, keysCreateCmd, keysUpdateCmd, keysDeleteCmd, keysRotateCmd, keysEnableCmd, keysDisableCmd, keysCopyCmd, keysEnvCmd)
 	rootCmd.AddCommand(keysCmd)
 }
