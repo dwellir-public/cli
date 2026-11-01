@@ -110,6 +110,18 @@ func (k *KeysAPI) Delete(key Secret) (*DeleteKeyResult, error) {
 	}, nil
 }
 
+// Rotate gives key a new value and returns the updated key. The old value
+// stops working at once. Unlike Update, a timeout is not retried: the first
+// request may have rotated the key, so a retry would target a value that no
+// longer exists.
+func (k *KeysAPI) Rotate(key Secret) (*APIKey, error) {
+	var rotated APIKey
+	if err := k.client.Post(keyPath(key)+"/rotate", nil, &rotated); err != nil {
+		return nil, err
+	}
+	return &rotated, nil
+}
+
 func (k *KeysAPI) Enable(current APIKey) (*APIKey, error) {
 	enabled := true
 	return k.Update(current, UpdateKeyInput{Enabled: &enabled})

@@ -63,7 +63,7 @@ func (f *HumanFormatter) Success(command string, data interface{}) error {
 	switch command {
 	case "keys.list":
 		return f.writeKeysList(data)
-	case "keys.create", "keys.update", "keys.enable", "keys.disable":
+	case "keys.create", "keys.update", "keys.rotate", "keys.enable", "keys.disable":
 		return f.writeSingleKey(data)
 	case "keys.delete":
 		return f.Write(data)

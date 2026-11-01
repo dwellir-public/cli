@@ -271,6 +271,63 @@ func TestDeleteKeyReturnsAPIError(t *testing.T) {
 	}
 }
 
+func TestRotateKey(t *testing.T) {
+	const newKey = "1a2b3c4d-0000-1111-2222-333344445555"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/v4/organization/apikeys/abc-123/rotate" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if body, _ := io.ReadAll(r.Body); len(body) != 0 {
+			t.Errorf("expected no request body, got %q", body)
+		}
+		_, _ = w.Write([]byte(`{"api_key":"` + newKey + `","name":"ci","enabled":true,"daily_quota":100}`))
+	}))
+	defer server.Close()
+
+	key, err := NewKeysAPI(NewClient(server.URL, "token")).Rotate(NewSecret("abc-123"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if key.APIKey.Reveal() != newKey || key.Name != "ci" || !key.Enabled || key.DailyQuota == nil || *key.DailyQuota != 100 {
+		t.Errorf("unexpected rotated key: %+v", key)
+	}
+}
+
+func TestRotateKeyDoesNotRetryTimeout(t *testing.T) {
+	client := NewClient("https://example.com", "token")
+	var postCount int32
+	client.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			atomic.AddInt32(&postCount, 1)
+			return nil, timeoutErr{err: context.DeadlineExceeded}
+		}),
+	}
+
+	key, err := NewKeysAPI(client).Rotate(NewSecret("abc-123"))
+	if err == nil || key != nil {
+		t.Fatalf("expected an error and no key, got %#v, %v", key, err)
+	}
+	if got := atomic.LoadInt32(&postCount); got != 1 {
+		t.Fatalf("expected 1 POST attempt, got %d", got)
+	}
+}
+
+func TestRotateKeyReturnsAPIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"detail":"API key not found"}`, http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	key, err := NewKeysAPI(NewClient(server.URL, "token")).Rotate(NewSecret("missing"))
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound || key != nil {
+		t.Fatalf("expected a 404 APIError and no key, got %#v, %v", key, err)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

@@ -11,7 +11,10 @@ import (
 	"testing"
 )
 
-const e2eKey = "9f1c2d3e-4b5a-6789-abcd-ef0123456789"
+const (
+	e2eKey        = "9f1c2d3e-4b5a-6789-abcd-ef0123456789"
+	e2eRotatedKey = "1a2b3c4d-5e6f-7081-92a3-b4c5d6e7f809"
+)
 
 func keysServer(t *testing.T) map[string]string {
 	t.Helper()
@@ -21,6 +24,12 @@ func keysServer(t *testing.T) map[string]string {
 			_, _ = w.Write([]byte(`[{"api_key":"` + e2eKey + `","name":"ci","enabled":true}]`))
 		case "/v4/organization/apikeys/" + e2eKey:
 			_, _ = w.Write([]byte(`{"api_key":"` + e2eKey + `","name":"ci","enabled":false}`))
+		case "/v4/organization/apikeys/" + e2eKey + "/rotate":
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			_, _ = w.Write([]byte(`{"api_key":"` + e2eRotatedKey + `","name":"ci","enabled":true}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -45,6 +54,39 @@ func TestKeyCommandsNeverPrintTheKey(t *testing.T) {
 		output := res.stdout + res.stderr
 		if strings.Contains(output, e2eKey) || !strings.Contains(output, "9f1c****6789") {
 			t.Fatalf("%v: expected only the masked key, got:\n%s", args, output)
+		}
+	}
+}
+
+func TestKeysRotateNeedsYesWithoutATerminal(t *testing.T) {
+	env := keysServer(t)
+	for _, format := range []string{"--json", "--toon", "--human"} {
+		res := runCLIWithEnv(t, env, "keys", "rotate", "ci", format)
+		output := res.stdout + res.stderr
+		if res.exitCode == 0 || !strings.Contains(output, "needs confirmation") || !strings.Contains(output, "--yes") {
+			t.Fatalf("%s: expected a confirmation error naming --yes, got %d\n%s", format, res.exitCode, output)
+		}
+		if format == "--json" && !strings.Contains(res.stdout, `"code":"validation_error"`) {
+			t.Fatalf("expected validation_error JSON, got: %s", res.stdout)
+		}
+	}
+}
+
+func TestKeysRotatePrintsOnlyTheMaskedKey(t *testing.T) {
+	env := keysServer(t)
+	for _, format := range []string{"--json", "--toon", "--human"} {
+		res := runCLIWithEnv(t, env, "keys", "rotate", "ci", "--yes", format)
+		if res.exitCode != 0 {
+			t.Fatalf("%s: expected success, got %d\nstdout: %s\nstderr: %s", format, res.exitCode, res.stdout, res.stderr)
+		}
+		output := res.stdout + res.stderr
+		if strings.Contains(output, e2eKey) || strings.Contains(output, e2eRotatedKey) {
+			t.Fatalf("%s: output contains a full key:\n%s", format, output)
+		}
+		for _, want := range []string{"1a2b****f809", "dwellir keys copy <name>", "dwellir keys env <name>"} {
+			if !strings.Contains(res.stdout, want) {
+				t.Fatalf("%s: expected %q in output, got:\n%s", format, want, res.stdout)
+			}
 		}
 	}
 }

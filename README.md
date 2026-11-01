@@ -103,6 +103,7 @@ dwellir keys create --name ci-key --daily-quota 100000
 dwellir keys copy ci-key
 dwellir keys env ci-key
 dwellir keys disable ci-key
+dwellir keys rotate ci-key
 ```
 
 The CLI never prints a full API key. Every output format shows keys masked, for example `9f1c****6789`.
@@ -110,6 +111,11 @@ Select a key by name, by masked value, or by full value.
 To use a key, copy it to the clipboard with `keys copy`, or write it to `.env` with `keys env` or `project setup`.
 `keys copy` uses `pbcopy` on macOS, `clip.exe` on Windows and WSL, `wl-copy` on Wayland, `xclip` or `xsel` on X11, and `termux-clipboard-set` on Termux.
 Over SSH or in CI there is no clipboard, so use `keys env`.
+
+`keys rotate` gives a key a new value, for example after a leak. The old value stops working at once.
+The key keeps its name, quotas, enabled state and IP whitelists.
+The command asks for confirmation; pass `--yes` to skip it. JSON and TOON output, and runs without a terminal, need `--yes`.
+After rotating, run `keys copy` or `keys env <name> --replace` to use the new value.
 
 ### 5) Check usage and logs
 
@@ -128,7 +134,7 @@ Top-level commands:
 - `dwellir auth` — login/logout/status/token
 - `dwellir docs` — list/search/get public docs pages as markdown
 - `dwellir endpoints` — list/search/get chains and networks
-- `dwellir keys` — list/create/update/delete/enable/disable API keys; copy/env to use one
+- `dwellir keys` — list/create/update/delete/rotate/enable/disable API keys; copy/env to use one
 - `dwellir usage` — summary/history/rps analytics
 - `dwellir logs` — errors/stats/facets with filters
 - `dwellir account` — info/subscription
