@@ -196,6 +196,7 @@ func TestKeysRotateNeedsYesWhenItCannotPrompt(t *testing.T) {
 		terminal bool
 		args     []string
 	}{
+		"default in a terminal":     {true, []string{"ci"}},
 		"json in a terminal":        {true, []string{"ci", "--json"}},
 		"toon in a terminal":        {true, []string{"ci", "--toon"}},
 		"human without a terminal":  {false, []string{"ci", "--human"}},

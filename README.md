@@ -114,7 +114,7 @@ Over SSH or in CI there is no clipboard, so use `keys env`.
 
 `keys rotate` gives a key a new value, for example after a leak. The old value stops working at once.
 The key keeps its name, quotas, enabled state and IP whitelists.
-The command asks for confirmation; pass `--yes` to skip it. JSON and TOON output, and runs without a terminal, need `--yes`.
+Rotating needs confirmation: pass `--yes`, or pass `--human` in a terminal to be asked first. Without either, the command rotates nothing.
 After rotating, run `keys copy` or `keys env <name> --replace` to use the new value.
 
 ### 5) Check usage and logs

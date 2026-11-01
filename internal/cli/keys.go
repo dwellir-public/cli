@@ -177,8 +177,8 @@ The old value stops working at once. Every client that still uses it fails
 until you give it the new value. The key keeps its name, quotas, enabled
 state and IP whitelists.
 
-The command asks for confirmation. --yes skips the question. JSON and TOON
-output, and runs without a terminal, need --yes.
+Rotating needs confirmation: pass --yes, or pass --human in a terminal
+to be asked first. Without either, the command rotates nothing.
 
 The CLI prints the new value masked. To use it:
   dwellir keys copy <name>             Copy the new key to the clipboard
@@ -189,12 +189,15 @@ Example:
   dwellir keys rotate ci-key --yes --json`,
 	Args: keyNameArg("dwellir keys rotate ci-key"),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		canPrompt := isHumanOutput() && stdinIsTerminal()
+		// AGENTS.md allows a prompt only in an explicit --human run. Human is
+		// also the default format, so the flag itself must be set: a plain
+		// run never waits for input.
+		canPrompt := humanOutput && isHumanOutput() && stdinIsTerminal()
 		if !keyRotateYes && !canPrompt {
 			return getFormatter().Error("validation_error",
 				"Rotating a key needs confirmation.",
 				"The current key value stops working at once, and every client that still uses it fails. "+
-					"Pass --yes to confirm, for example: dwellir keys rotate <name> --yes")
+					"Pass --yes to confirm, or --human in a terminal to be asked, for example: dwellir keys rotate <name> --yes")
 		}
 		client, err := newAPIClient()
 		if err != nil {
