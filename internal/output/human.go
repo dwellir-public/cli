@@ -67,6 +67,11 @@ func (f *HumanFormatter) Success(command string, data interface{}) error {
 		return f.writeSingleKey(data)
 	case "keys.delete":
 		return f.Write(data)
+	case "whitelists.list":
+		return f.writeWhitelistsList(data)
+	case "whitelists.create", "whitelists.update", "whitelists.enable", "whitelists.disable",
+		"whitelists.assign", "whitelists.unassign":
+		return f.writeSingleWhitelist(data)
 	case "usage.summary":
 		return f.writeUsageSummary(data)
 	case "usage.history":
@@ -277,6 +282,86 @@ func (f *HumanFormatter) writeSingleKey(data interface{}) error {
 		{"Created at", key.CreatedAt},
 		{"Updated at", key.UpdatedAt},
 	})
+}
+
+func (f *HumanFormatter) writeWhitelistsList(data interface{}) error {
+	whitelists, ok := data.([]api.Whitelist)
+	if !ok {
+		return f.Write(data)
+	}
+	if len(whitelists) == 0 {
+		_, err := fmt.Fprintln(f.w, "No IP whitelists found.")
+		return err
+	}
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"ID", "Name", "Enabled", "Keys", "Addresses"})
+	for _, whitelist := range whitelists {
+		tw.AppendRow(f.formatTableRow(table.Row{
+			whitelist.ID,
+			whitelist.Name,
+			yesNo(whitelist.Enabled),
+			strings.Join(whitelistKeyLabels(whitelist), ", "),
+			strings.Join(whitelistAddresses(whitelist), ", "),
+		}))
+	}
+	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeSingleWhitelist(data interface{}) error {
+	whitelist, ok := data.(api.Whitelist)
+	if !ok {
+		return f.Write(data)
+	}
+	description := "-"
+	if whitelist.Description != nil && strings.TrimSpace(*whitelist.Description) != "" {
+		description = *whitelist.Description
+	}
+	return f.renderKeyValueRows([][2]string{
+		{"ID", strconv.FormatInt(whitelist.ID, 10)},
+		{"Name", whitelist.Name},
+		{"Description", description},
+		{"Enabled", yesNo(whitelist.Enabled)},
+		{"Keys", strings.Join(whitelistKeyLabels(whitelist), "\n")},
+		{"Addresses", strings.Join(whitelistAddresses(whitelist), "\n")},
+	})
+}
+
+// whitelistKeyLabels names the keys a whitelist restricts. An account-wide
+// whitelist restricts every key, including keys created later.
+func whitelistKeyLabels(whitelist api.Whitelist) []string {
+	if whitelist.ApplyToAllAPIKeys {
+		return []string{"all keys"}
+	}
+	var labels []string
+	for _, assignment := range whitelist.AssignedAPIKeys {
+		if !assignment.Enabled {
+			continue
+		}
+		label := assignment.APIKey.Masked()
+		if assignment.Name != "" {
+			label = assignment.Name + " (" + label + ")"
+		}
+		labels = append(labels, label)
+	}
+	if len(labels) == 0 {
+		return []string{"none"}
+	}
+	return labels
+}
+
+func whitelistAddresses(whitelist api.Whitelist) []string {
+	if len(whitelist.Entries) == 0 {
+		return []string{"none"}
+	}
+	addresses := make([]string, 0, len(whitelist.Entries))
+	for _, entry := range whitelist.Entries {
+		address := entry.CIDR
+		if !entry.Enabled {
+			address += " (disabled)"
+		}
+		addresses = append(addresses, address)
+	}
+	return addresses
 }
 
 func (f *HumanFormatter) writeKeyValue(data map[string]interface{}) error {

@@ -227,9 +227,15 @@ Example:
 }
 
 func confirmRotate(cmd *cobra.Command, key api.APIKey) (bool, error) {
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+	return confirmPrompt(cmd, fmt.Sprintf(
 		"Rotate API key %q (%s)? The current value stops working at once, and every client that still uses it will fail. [y/N]: ",
-		key.Name, key.APIKey.Masked())
+		key.Name, key.APIKey.Masked()))
+}
+
+// confirmPrompt writes prompt to stderr and reports whether the answer is yes.
+// An empty answer or end of input means no.
+func confirmPrompt(cmd *cobra.Command, prompt string) (bool, error) {
+	_, _ = fmt.Fprint(cmd.ErrOrStderr(), prompt)
 	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return false, err
