@@ -362,8 +362,9 @@ func TestWhitelistsCreateAllowsADisabledWhitelistWithoutAddresses(t *testing.T) 
 }
 
 func TestWhitelistsListHuman(t *testing.T) {
-	newFakeMarly(t,
+	m := newFakeMarly(t,
 		&fakeWhitelist{ID: 7, Name: "office", Enabled: true, Entries: []string{"203.0.113.10/32", "2001:db8::5/128"}, Keys: []string{testKeyValue}},
+		&fakeWhitelist{ID: 6, Name: "ci", Enabled: true, Entries: []string{"192.0.2.1/32"}, Keys: []string{testRotatedKeyValue}},
 		&fakeWhitelist{ID: 8, Name: "everyone", AllKeys: true, Entries: []string{"198.51.100.7/32"}},
 		&fakeWhitelist{ID: 9, Name: "draft"},
 	)
@@ -371,12 +372,22 @@ func TestWhitelistsListHuman(t *testing.T) {
 	if run.err != nil {
 		t.Fatalf("unexpected error: %v\n%s", run.err, run.stdout)
 	}
-	for _, want := range []string{"ID", "office", "ci (9f1c****6789)", "203.0.113.10/32, 2001:db8::5/128", "all keys", "draft", "none"} {
+	for _, want := range []string{"ID", "office", "ci (9f1c****6789)", "deploy (1a2b****f809)", "203.0.113.10/32, 2001:db8::5/128",
+		"all keys", "draft", "none"} {
 		if !strings.Contains(run.stdout, want) {
 			t.Errorf("expected %q in output:\n%s", want, run.stdout)
 		}
 	}
 	assertNoFullKey(t, run)
+	keyLists := 0
+	for _, request := range m.requests {
+		if request == "GET /v4/organization/apikeys" {
+			keyLists++
+		}
+	}
+	if keyLists != 1 {
+		t.Errorf("expected one key list request for all whitelists, got %d", keyLists)
+	}
 }
 
 func TestWhitelistsListEmpty(t *testing.T) {
@@ -459,14 +470,33 @@ func TestWhitelistsAssignAndUnassign(t *testing.T) {
 
 func TestWhitelistsAssignToAccountWideWhitelistExplainsTheEffect(t *testing.T) {
 	// Assigning before --all-keys=false keeps the key restricted without a gap.
-	m := newFakeMarly(t, &fakeWhitelist{ID: 7, Name: "office", Enabled: true, AllKeys: true, Entries: []string{"203.0.113.10/32"}})
-	run := runWhitelists(t, "", false, "assign", "office", "ci", "--json")
-	if run.err != nil {
-		t.Fatalf("unexpected error: %v\n%s", run.err, run.stdout)
+	cases := map[string]struct {
+		command string
+		enabled bool
+		want    string
+	}{
+		"assign":             {"assign", true, "so every key is restricted. After 'dwellir whitelists update 7 --all-keys=false', only manually assigned"},
+		"unassign":           {"unassign", true, "so the key stays restricted. After 'dwellir whitelists update 7 --all-keys=false', only manually assigned"},
+		"disabled restricts": {"assign", false, ""},
 	}
-	assertWrites(t, m, "POST "+wlBase+"/7/api-keys/"+testKeyValue)
-	if !strings.Contains(run.stdout, "every key stays restricted") || !strings.Contains(run.stdout, "update 7 --all-keys=false") {
-		t.Errorf("expected a notice about --all-keys=false:\n%s", run.stdout)
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			newFakeMarly(t, &fakeWhitelist{ID: 7, Name: "office", Enabled: tc.enabled, AllKeys: true,
+				Entries: []string{"203.0.113.10/32"}, Keys: []string{testKeyValue}})
+			run := runWhitelists(t, "", false, tc.command, "office", "ci", "--json")
+			if run.err != nil {
+				t.Fatalf("unexpected error: %v\n%s", run.err, run.stdout)
+			}
+			if tc.want == "" {
+				if strings.Contains(run.stdout, "restricted") {
+					t.Errorf("a disabled whitelist restricts nothing, so it needs no notice:\n%s", run.stdout)
+				}
+				return
+			}
+			if !strings.Contains(run.stdout, tc.want) {
+				t.Errorf("expected %q in output:\n%s", tc.want, run.stdout)
+			}
+		})
 	}
 }
 

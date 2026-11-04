@@ -65,9 +65,11 @@ var whitelistsListCmd = &cobra.Command{
 		if whitelists == nil {
 			whitelists = []api.Whitelist{}
 		}
+		all := make([]*api.Whitelist, len(whitelists))
 		for i := range whitelists {
-			nameWhitelistKeys(client, &whitelists[i])
+			all[i] = &whitelists[i]
 		}
+		nameWhitelistKeys(client, all...)
 		return getFormatter().Success("whitelists.list", whitelists)
 	}),
 }
@@ -341,10 +343,14 @@ func changeWhitelistKey(whitelistSelector, keySelector string, assign bool) erro
 	nameWhitelistKeys(client, updated)
 	// Brian keeps manual assignments of an account-wide whitelist, and they
 	// take over after --all-keys=false. Assigning first leaves no gap.
-	if updated.ApplyToAllAPIKeys {
+	if updated.ApplyToAllAPIKeys && updated.Enabled {
+		effect := "every key is restricted"
+		if !assign {
+			effect = "the key stays restricted"
+		}
 		return getFormatter().Success(command, output.Notice{Data: *updated, Text: fmt.Sprintf(
-			"This whitelist applies to all API keys, so every key stays restricted. "+
-				"After 'dwellir whitelists update %d --all-keys=false', only the assigned keys stay restricted.", updated.ID)})
+			"This whitelist applies to all API keys, so %s. After 'dwellir whitelists update %d --all-keys=false', "+
+				"only manually assigned keys stay restricted.", effect, updated.ID)})
 	}
 	return getFormatter().Success(command, whitelistWithNotice(*updated))
 }
