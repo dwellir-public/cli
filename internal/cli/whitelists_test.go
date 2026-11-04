@@ -457,19 +457,29 @@ func TestWhitelistsAssignAndUnassign(t *testing.T) {
 	assertNoFullKey(t, run)
 }
 
-func TestWhitelistsAssignRejectsAccountWideWhitelist(t *testing.T) {
-	for _, command := range []string{"assign", "unassign"} {
-		t.Run(command, func(t *testing.T) {
-			m := newFakeMarly(t, &fakeWhitelist{ID: 7, Name: "office", AllKeys: true, Entries: []string{"203.0.113.10/32"}})
-			run := runWhitelists(t, "", false, command, "office", "ci", "--json")
-			if got := ExitCode(run.err); got != exitValidation {
-				t.Fatalf("exit code = %d, want %d\n%s", got, exitValidation, run.stdout)
-			}
-			if !strings.Contains(run.stdout, "--all-keys=false") {
-				t.Errorf("expected a hint to turn off --all-keys:\n%s", run.stdout)
-			}
-			assertWrites(t, m)
-		})
+func TestWhitelistsAssignToAccountWideWhitelistExplainsTheEffect(t *testing.T) {
+	// Assigning before --all-keys=false keeps the key restricted without a gap.
+	m := newFakeMarly(t, &fakeWhitelist{ID: 7, Name: "office", Enabled: true, AllKeys: true, Entries: []string{"203.0.113.10/32"}})
+	run := runWhitelists(t, "", false, "assign", "office", "ci", "--json")
+	if run.err != nil {
+		t.Fatalf("unexpected error: %v\n%s", run.err, run.stdout)
+	}
+	assertWrites(t, m, "POST "+wlBase+"/7/api-keys/"+testKeyValue)
+	if !strings.Contains(run.stdout, "every key stays restricted") || !strings.Contains(run.stdout, "update 7 --all-keys=false") {
+		t.Errorf("expected a notice about --all-keys=false:\n%s", run.stdout)
+	}
+}
+
+func TestWhitelistsHumanOutputPrintsIDsAsSelectors(t *testing.T) {
+	newFakeMarly(t, &fakeWhitelist{ID: 1234, Name: "5000", Entries: []string{"203.0.113.10/32"}})
+	for _, args := range [][]string{{"list"}, {"disable", "1234"}, {"delete", "1234", "--yes"}} {
+		run := runWhitelists(t, "", false, append(args, "--human")...)
+		if run.err != nil {
+			t.Fatalf("%v: unexpected error: %v\n%s", args, run.err, run.stdout)
+		}
+		if !strings.Contains(run.stdout, "1234") || !strings.Contains(run.stdout, "5000") || strings.Contains(run.stdout, "1,234") || strings.Contains(run.stdout, "5,000") {
+			t.Errorf("%v: expected the ID and name without separators:\n%s", args, run.stdout)
+		}
 	}
 }
 

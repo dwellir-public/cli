@@ -65,7 +65,9 @@ var whitelistsListCmd = &cobra.Command{
 		if whitelists == nil {
 			whitelists = []api.Whitelist{}
 		}
-		nameWhitelistKeys(client, whitelists...)
+		for i := range whitelists {
+			nameWhitelistKeys(client, &whitelists[i])
+		}
 		return getFormatter().Success("whitelists.list", whitelists)
 	}),
 }
@@ -83,7 +85,8 @@ Pass --all-keys to restrict every API key, including keys created later, or
 no key until you assign one.
 
 A whitelist for specific keys is created disabled, gets its keys, and is
-then enabled. If a step fails, the whitelist stays disabled.
+then enabled. If a step fails, the error lists the commands that finish
+the setup.
 
 Example:
   dwellir whitelists create --name office --ip 203.0.113.10 --ip 2001:db8::5 --all-keys
@@ -164,12 +167,12 @@ func runWhitelistsCreate(cmd *cobra.Command, args []string) error {
 		activated, err := whitelistsAPI.SetEnabled(created.ID, true)
 		if err != nil {
 			return formatWhitelistStepError(err, fmt.Sprintf(
-				"Created IP whitelist %q (ID %d) and assigned its keys, but could not enable it.", created.Name, created.ID),
+				"Created IP whitelist %q (ID %d) and assigned its keys, but could not confirm that it is enabled.", created.Name, created.ID),
 				whitelistRecoveryHelp(created.ID, nil, true))
 		}
 		whitelist = activated
 	}
-	nameWhitelistKeys(client, *whitelist)
+	nameWhitelistKeys(client, whitelist)
 	return getFormatter().Success("whitelists.create", whitelistWithNotice(*whitelist))
 }
 
@@ -194,7 +197,8 @@ var whitelistsUpdateCmd = &cobra.Command{
 
 --ip replaces every address of the whitelist. Pass it once for each address
 to keep. --all-keys restricts every API key; --all-keys=false makes the
-whitelist restrict only the keys assigned to it.
+whitelist restrict only the keys assigned to it. Assign those keys before
+--all-keys=false, so they stay restricted without a gap.
 
 Example:
   dwellir whitelists update office --name hq
@@ -269,7 +273,7 @@ func updateWhitelist(selector, command string, input api.UpdateWhitelistInput) e
 	if err != nil {
 		return formatCommandError(err)
 	}
-	nameWhitelistKeys(client, *updated)
+	nameWhitelistKeys(client, updated)
 	return getFormatter().Success(command, whitelistWithNotice(*updated))
 }
 
@@ -325,13 +329,6 @@ func changeWhitelistKey(whitelistSelector, keySelector string, assign bool) erro
 	if err != nil {
 		return err
 	}
-	// Brian keeps account-wide assignments on unassign, and an extra manual
-	// assignment changes nothing, so both would report a change that did not happen.
-	if whitelist.ApplyToAllAPIKeys {
-		return getFormatter().Error("validation_error",
-			fmt.Sprintf("IP whitelist %q applies to all API keys.", whitelist.Name),
-			fmt.Sprintf("To restrict only some keys, first run 'dwellir whitelists update %d --all-keys=false', then assign each key.", whitelist.ID))
-	}
 	whitelistsAPI := api.NewWhitelistsAPI(client)
 	command, call := "whitelists.unassign", whitelistsAPI.Unassign
 	if assign {
@@ -341,7 +338,14 @@ func changeWhitelistKey(whitelistSelector, keySelector string, assign bool) erro
 	if err != nil {
 		return formatCommandError(err)
 	}
-	nameWhitelistKeys(client, *updated)
+	nameWhitelistKeys(client, updated)
+	// Brian keeps manual assignments of an account-wide whitelist, and they
+	// take over after --all-keys=false. Assigning first leaves no gap.
+	if updated.ApplyToAllAPIKeys {
+		return getFormatter().Success(command, output.Notice{Data: *updated, Text: fmt.Sprintf(
+			"This whitelist applies to all API keys, so every key stays restricted. "+
+				"After 'dwellir whitelists update %d --all-keys=false', only the assigned keys stay restricted.", updated.ID)})
+	}
 	return getFormatter().Success(command, whitelistWithNotice(*updated))
 }
 
@@ -446,7 +450,7 @@ func resolveWhitelistKeys(client *api.Client, selectors []string) ([]api.APIKey,
 // nameWhitelistKeys fills key names from the key list. Marly sends only key
 // values, and a masked value alone is hard to recognise. The names are best
 // effort: when the key list fails, keys show by masked value.
-func nameWhitelistKeys(client *api.Client, whitelists ...api.Whitelist) {
+func nameWhitelistKeys(client *api.Client, whitelists ...*api.Whitelist) {
 	hasKeys := false
 	for _, whitelist := range whitelists {
 		hasKeys = hasKeys || len(whitelist.AssignedAPIKeys) > 0

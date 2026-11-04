@@ -72,6 +72,8 @@ func (f *HumanFormatter) Success(command string, data interface{}) error {
 	case "whitelists.create", "whitelists.update", "whitelists.enable", "whitelists.disable",
 		"whitelists.assign", "whitelists.unassign":
 		return f.writeSingleWhitelist(data)
+	case "whitelists.delete":
+		return f.writeWhitelistDelete(data)
 	case "usage.summary":
 		return f.writeUsageSummary(data)
 	case "usage.history":
@@ -297,8 +299,8 @@ func (f *HumanFormatter) writeWhitelistsList(data interface{}) error {
 	tw.AppendHeader(table.Row{"ID", "Name", "Enabled", "Keys", "Addresses"})
 	for _, whitelist := range whitelists {
 		tw.AppendRow(f.formatTableRow(table.Row{
-			whitelist.ID,
-			whitelist.Name,
+			literal(strconv.FormatInt(whitelist.ID, 10)),
+			literal(whitelist.Name),
 			yesNo(whitelist.Enabled),
 			strings.Join(whitelistKeyLabels(whitelist), ", "),
 			strings.Join(whitelistAddresses(whitelist), ", "),
@@ -316,7 +318,7 @@ func (f *HumanFormatter) writeSingleWhitelist(data interface{}) error {
 	if whitelist.Description != nil && strings.TrimSpace(*whitelist.Description) != "" {
 		description = *whitelist.Description
 	}
-	return f.renderKeyValueRows([][2]string{
+	return f.renderLiteralRows([][2]string{
 		{"ID", strconv.FormatInt(whitelist.ID, 10)},
 		{"Name", whitelist.Name},
 		{"Description", description},
@@ -324,6 +326,31 @@ func (f *HumanFormatter) writeSingleWhitelist(data interface{}) error {
 		{"Keys", strings.Join(whitelistKeyLabels(whitelist), "\n")},
 		{"Addresses", strings.Join(whitelistAddresses(whitelist), "\n")},
 	})
+}
+
+func (f *HumanFormatter) writeWhitelistDelete(data interface{}) error {
+	result, ok := data.(map[string]interface{})
+	if !ok {
+		return f.Write(data)
+	}
+	return f.renderLiteralRows([][2]string{
+		{"ID", fmt.Sprint(result["id"])},
+		{"Name", fmt.Sprint(result["name"])},
+		{"Status", fmt.Sprint(result["status"])},
+	})
+}
+
+// literal is table text that is printed as is. Whitelist IDs and names are
+// selectors, so "1000" must not become "1,000".
+type literal string
+
+// renderLiteralRows renders label/value rows without number formatting.
+func (f *HumanFormatter) renderLiteralRows(rows [][2]string) error {
+	tw := table.NewWriter()
+	for _, row := range rows {
+		tw.AppendRow(table.Row{row[0], row[1]})
+	}
+	return f.renderTable(tw)
 }
 
 // whitelistKeyLabels names the keys a whitelist restricts. An account-wide
@@ -1223,6 +1250,8 @@ func formatHumanValue(v interface{}) interface{} {
 		return formatUint64(uint64(t))
 	case uint64:
 		return formatUint64(t)
+	case literal:
+		return string(t)
 	case string:
 		return formatNumericString(t)
 	default:

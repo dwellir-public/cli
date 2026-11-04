@@ -9,13 +9,6 @@ import (
 
 const whitelistsBasePath = "/v4/organization/ip-whitelists"
 
-// Assignment kinds Marly reports. Brian adds an account_wide assignment for
-// every key of an account-wide whitelist; manual ones come from assign.
-const (
-	AssignmentManual      = "manual"
-	AssignmentAccountWide = "account_wide"
-)
-
 // Whitelist is an IP whitelist of the active organization. An enabled
 // whitelist limits its API keys to the addresses in Entries.
 type Whitelist struct {
@@ -145,17 +138,21 @@ func (e *WhitelistLookupError) Error() string {
 	return "no IP whitelist matches that ID or name"
 }
 
-// FindWhitelist matches selector against a whitelist ID or name
-// (case-insensitive). Names are not unique, so a name can be ambiguous.
+// FindWhitelist matches selector against a whitelist ID, then a name
+// (case-insensitive). An ID always wins, so the ID the CLI prints for an
+// ambiguous name always selects one whitelist.
 func FindWhitelist(whitelists []Whitelist, selector string) (Whitelist, error) {
 	selector = strings.TrimSpace(selector)
-	id, idErr := strconv.ParseInt(selector, 10, 64)
+	if id, err := strconv.ParseInt(selector, 10, 64); err == nil {
+		for _, whitelist := range whitelists {
+			if whitelist.ID == id {
+				return whitelist, nil
+			}
+		}
+	}
 	var matches []Whitelist
 	for _, whitelist := range whitelists {
-		if selector == "" {
-			break
-		}
-		if (idErr == nil && whitelist.ID == id) || strings.EqualFold(strings.TrimSpace(whitelist.Name), selector) {
+		if selector != "" && strings.EqualFold(strings.TrimSpace(whitelist.Name), selector) {
 			matches = append(matches, whitelist)
 		}
 	}

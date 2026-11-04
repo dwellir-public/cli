@@ -129,7 +129,7 @@ func TestWhitelistDecodesMarlyShapeAndMasksKeys(t *testing.T) {
 		t.Fatalf("unexpected entries %#v", whitelist.Entries)
 	}
 	assignment := whitelist.AssignedAPIKeys[0]
-	if assignment.APIKey.Reveal() != testKey || assignment.AssignmentKind != AssignmentManual {
+	if assignment.APIKey.Reveal() != testKey || assignment.AssignmentKind != "manual" {
 		t.Fatalf("unexpected assignment %#v", assignment)
 	}
 	encoded, err := json.Marshal(whitelist)
@@ -149,12 +149,12 @@ func TestFindWhitelist(t *testing.T) {
 		ambiguous bool
 		missing   bool
 	}{
-		"by id":                    {selector: "8", wantID: 8},
-		"by name ignoring case":    {selector: " office ", wantID: 7},
-		"duplicate name":           {selector: "ci", ambiguous: true},
-		"name equal to another id": {selector: "7", ambiguous: true},
-		"no match":                 {selector: "home", missing: true},
-		"empty":                    {selector: "", missing: true},
+		"by id":                 {selector: "8", wantID: 8},
+		"by name ignoring case": {selector: " office ", wantID: 7},
+		"duplicate name":        {selector: "ci", ambiguous: true},
+		"id wins over a name":   {selector: "7", wantID: 7},
+		"no match":              {selector: "home", missing: true},
+		"empty":                 {selector: "", missing: true},
 	}
 	for name, tc := range cases {
 		got, err := FindWhitelist(whitelists, tc.selector)

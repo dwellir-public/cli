@@ -136,8 +136,8 @@ A whitelist applies to every key (`--all-keys`, which includes keys created late
 Select a whitelist by ID or by name, and a key by name or masked value. `whitelist` also works as the command name.
 
 - `--ip` takes single addresses only, as in the dashboard. IPv4 addresses become `/32` and IPv6 addresses become `/128`. Ranges such as `/24` are rejected.
-- `create --key` creates the whitelist disabled, assigns each key, then enables it. If a step fails, the whitelist stays disabled and the error lists the commands that finish the setup.
-- `update --ip` replaces every address. `update --all-keys=false` makes an account-wide whitelist restrict only its assigned keys.
+- `create --key` creates the whitelist disabled, assigns each key, then enables it. If a step fails, the error lists the commands that finish the setup. Running them again is safe.
+- `update --ip` replaces every address. `update --all-keys=false` makes an account-wide whitelist restrict only its assigned keys. Assign those keys first, so they stay restricted without a gap.
 - `delete` needs confirmation: pass `--yes`, or pass `--human` in a terminal to be asked first. Without either, the command deletes nothing.
 - Every write needs a token with the `read-write` scope, which `dwellir auth login` requests. A token with a lower scope gets a `forbidden` error (exit code 2).
 
