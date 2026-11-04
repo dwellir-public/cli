@@ -117,7 +117,31 @@ The key keeps its name, quotas, enabled state and IP whitelists.
 Rotating needs confirmation: pass `--yes`, or pass `--human` in a terminal to be asked first. Without either, the command rotates nothing.
 After rotating, run `keys copy` or `keys env <name> --replace` to use the new value.
 
-### 5) Check usage and logs
+### 5) Restrict keys to IP addresses
+
+```bash
+dwellir whitelists list
+dwellir whitelists create --name office --ip 203.0.113.10 --ip 2001:db8::5 --key ci-key
+dwellir whitelists create --name everyone --ip 198.51.100.7 --all-keys
+dwellir whitelists assign office deploy-key
+dwellir whitelists unassign office deploy-key
+dwellir whitelists update office --ip 203.0.113.10 --ip 203.0.113.11
+dwellir whitelists disable office
+dwellir whitelists enable office
+dwellir whitelists delete office --yes
+```
+
+An enabled IP whitelist limits its API keys to the listed addresses. Requests that use those keys from any other address fail.
+A whitelist applies to every key (`--all-keys`, which includes keys created later) or to the keys assigned to it.
+Select a whitelist by ID or by name, and a key by name or masked value. `whitelist` also works as the command name.
+
+- `--ip` takes single addresses only, as in the dashboard. IPv4 addresses become `/32` and IPv6 addresses become `/128`. Ranges such as `/24` are rejected.
+- `create --key` creates the whitelist disabled, assigns each key, then enables it. If a step fails, the error lists the commands that finish the setup. Running them again is safe.
+- `update --ip` replaces every address. `update --all-keys=false` makes an account-wide whitelist restrict only its assigned keys. Assign those keys first, so they stay restricted without a gap.
+- `delete` needs confirmation: pass `--yes`, or pass `--human` in a terminal to be asked first. Without either, the command deletes nothing.
+- Every write needs a token with the `read-write` scope, which `dwellir auth login` requests. A token with a lower scope gets a `forbidden` error (exit code 2).
+
+### 6) Check usage and logs
 
 ```bash
 dwellir usage summary
@@ -135,6 +159,7 @@ Top-level commands:
 - `dwellir docs` — list/search/get public docs pages as markdown
 - `dwellir endpoints` — list/search/get chains and networks
 - `dwellir keys` — list/create/update/delete/rotate/enable/disable API keys; copy/env to use one
+- `dwellir whitelists` — list/create/update/enable/disable/assign/unassign/delete IP whitelists for API keys
 - `dwellir usage` — summary/history/rps analytics
 - `dwellir logs` — errors/stats/facets with filters
 - `dwellir account` — info/subscription

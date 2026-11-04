@@ -13,10 +13,15 @@ func formatCommandError(err error) error {
 	if err == nil {
 		return nil
 	}
+	return getFormatter().Error(commandErrorParts(err))
+}
 
+// commandErrorParts classifies an API or network error into the error code,
+// message and help that formatCommandError renders.
+func commandErrorParts(err error) (code, message, help string) {
 	var apiErr *api.APIError
 	if errors.As(err, &apiErr) {
-		code := "api_error"
+		code = "api_error"
 		switch apiErr.StatusCode {
 		case 401, 403:
 			code = "forbidden"
@@ -27,17 +32,17 @@ func formatCommandError(err error) error {
 		case 429:
 			code = "rate_limited"
 		}
-		message := fmt.Sprintf("Request failed with HTTP %d.", apiErr.StatusCode)
-		help := output.DefaultHelp(code)
+		message = fmt.Sprintf("Request failed with HTTP %d.", apiErr.StatusCode)
+		help = output.DefaultHelp(code)
 		if body := strings.TrimSpace(apiErr.Body); body != "" {
 			help = "API response: " + body + "\n" + help
 		}
-		return getFormatter().Error(code, message, help)
+		return code, message, help
 	}
 
 	if strings.HasPrefix(err.Error(), "request failed") {
-		return getFormatter().Error("network_error", err.Error(),
-			"Check the network connection and DWELLIR_API_URL, then retry. Run 'dwellir doctor --verify-api' to test the API.")
+		return "network_error", err.Error(),
+			"Check the network connection and DWELLIR_API_URL, then retry. Run 'dwellir doctor --verify-api' to test the API."
 	}
-	return getFormatter().Error("error", err.Error(), "")
+	return "error", err.Error(), ""
 }

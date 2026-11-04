@@ -67,6 +67,13 @@ func (f *HumanFormatter) Success(command string, data interface{}) error {
 		return f.writeSingleKey(data)
 	case "keys.delete":
 		return f.Write(data)
+	case "whitelists.list":
+		return f.writeWhitelistsList(data)
+	case "whitelists.create", "whitelists.update", "whitelists.enable", "whitelists.disable",
+		"whitelists.assign", "whitelists.unassign":
+		return f.writeSingleWhitelist(data)
+	case "whitelists.delete":
+		return f.writeWhitelistDelete(data)
 	case "usage.summary":
 		return f.writeUsageSummary(data)
 	case "usage.history":
@@ -277,6 +284,111 @@ func (f *HumanFormatter) writeSingleKey(data interface{}) error {
 		{"Created at", key.CreatedAt},
 		{"Updated at", key.UpdatedAt},
 	})
+}
+
+func (f *HumanFormatter) writeWhitelistsList(data interface{}) error {
+	whitelists, ok := data.([]api.Whitelist)
+	if !ok {
+		return f.Write(data)
+	}
+	if len(whitelists) == 0 {
+		_, err := fmt.Fprintln(f.w, "No IP whitelists found.")
+		return err
+	}
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"ID", "Name", "Enabled", "Keys", "Addresses"})
+	for _, whitelist := range whitelists {
+		tw.AppendRow(f.formatTableRow(table.Row{
+			literal(strconv.FormatInt(whitelist.ID, 10)),
+			literal(whitelist.Name),
+			yesNo(whitelist.Enabled),
+			strings.Join(whitelistKeyLabels(whitelist), ", "),
+			strings.Join(whitelistAddresses(whitelist), ", "),
+		}))
+	}
+	return f.renderTable(tw)
+}
+
+func (f *HumanFormatter) writeSingleWhitelist(data interface{}) error {
+	whitelist, ok := data.(api.Whitelist)
+	if !ok {
+		return f.Write(data)
+	}
+	description := "-"
+	if whitelist.Description != nil && strings.TrimSpace(*whitelist.Description) != "" {
+		description = *whitelist.Description
+	}
+	return f.renderLiteralRows([][2]string{
+		{"ID", strconv.FormatInt(whitelist.ID, 10)},
+		{"Name", whitelist.Name},
+		{"Description", description},
+		{"Enabled", yesNo(whitelist.Enabled)},
+		{"Keys", strings.Join(whitelistKeyLabels(whitelist), "\n")},
+		{"Addresses", strings.Join(whitelistAddresses(whitelist), "\n")},
+	})
+}
+
+func (f *HumanFormatter) writeWhitelistDelete(data interface{}) error {
+	result, ok := data.(map[string]interface{})
+	if !ok {
+		return f.Write(data)
+	}
+	return f.renderLiteralRows([][2]string{
+		{"ID", fmt.Sprint(result["id"])},
+		{"Name", fmt.Sprint(result["name"])},
+		{"Status", fmt.Sprint(result["status"])},
+	})
+}
+
+// literal is table text that is printed as is. Whitelist IDs and names are
+// selectors, so "1000" must not become "1,000".
+type literal string
+
+// renderLiteralRows renders label/value rows without number formatting.
+func (f *HumanFormatter) renderLiteralRows(rows [][2]string) error {
+	tw := table.NewWriter()
+	for _, row := range rows {
+		tw.AppendRow(table.Row{row[0], row[1]})
+	}
+	return f.renderTable(tw)
+}
+
+// whitelistKeyLabels names the keys a whitelist restricts. An account-wide
+// whitelist restricts every key, including keys created later.
+func whitelistKeyLabels(whitelist api.Whitelist) []string {
+	if whitelist.ApplyToAllAPIKeys {
+		return []string{"all keys"}
+	}
+	var labels []string
+	for _, assignment := range whitelist.AssignedAPIKeys {
+		if !assignment.Enabled {
+			continue
+		}
+		label := assignment.APIKey.Masked()
+		if assignment.Name != "" {
+			label = assignment.Name + " (" + label + ")"
+		}
+		labels = append(labels, label)
+	}
+	if len(labels) == 0 {
+		return []string{"none"}
+	}
+	return labels
+}
+
+func whitelistAddresses(whitelist api.Whitelist) []string {
+	if len(whitelist.Entries) == 0 {
+		return []string{"none"}
+	}
+	addresses := make([]string, 0, len(whitelist.Entries))
+	for _, entry := range whitelist.Entries {
+		address := entry.CIDR
+		if !entry.Enabled {
+			address += " (disabled)"
+		}
+		addresses = append(addresses, address)
+	}
+	return addresses
 }
 
 func (f *HumanFormatter) writeKeyValue(data map[string]interface{}) error {
@@ -1138,6 +1250,8 @@ func formatHumanValue(v interface{}) interface{} {
 		return formatUint64(uint64(t))
 	case uint64:
 		return formatUint64(t)
+	case literal:
+		return string(t)
 	case string:
 		return formatNumericString(t)
 	default:
