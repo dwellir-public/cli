@@ -26,3 +26,15 @@ const addonsEnvVar = "DWELLIR_ADDONS"
 func addonsEnabled() bool {
 	return parseBoolFlag(os.Getenv(addonsEnvVar))
 }
+
+// feedbackEnvVar gates `dwellir feedback`.
+const feedbackEnvVar = "DWELLIR_FEEDBACK"
+
+// feedbackEnabled reports whether `dwellir feedback` is registered for this run.
+//
+// The command sends feedback to PostHog, but nothing routes it from there to
+// the team yet. Until a destination exists, the gate keeps users from writing
+// feedback that nobody reads.
+func feedbackEnabled() bool {
+	return parseBoolFlag(os.Getenv(feedbackEnvVar))
+}

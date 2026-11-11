@@ -74,8 +74,8 @@ func withRenderedExitCodes(run func(*cobra.Command, []string) error) func(*cobra
 }
 
 // documentsExitCodes reports whether a command's argument errors keep their
-// classified exit code: the status and whitelists commands, and keys rotate,
-// which scripts run unattended.
+// classified exit code: the status, whitelists and feedback commands, and keys
+// rotate, which scripts run unattended.
 func documentsExitCodes(cmd *cobra.Command) bool {
-	return isStatusCommand(cmd) || isWhitelistsCommand(cmd) || cmd == keysRotateCmd
+	return isStatusCommand(cmd) || isWhitelistsCommand(cmd) || cmd == keysRotateCmd || cmd == feedbackCmd
 }

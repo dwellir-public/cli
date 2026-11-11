@@ -64,15 +64,17 @@ var doctorCmd = &cobra.Command{
 			})
 		}
 
-		// Support needs to know whether a user has the gated add-on surface on,
-		// because with the gate off `dwellir addons` is not a command at all.
+		// Support needs to know which gated commands a user has, because with a
+		// gate off its command does not exist at all.
 		checks = append(checks, map[string]interface{}{
 			"name":    "feature_gates",
 			"status":  "ok",
 			"message": "Resolved optional feature gates.",
 			"details": map[string]interface{}{
-				"addons_enabled": addonsEnabled(),
-				"addons_env":     os.Getenv(addonsEnvVar),
+				"addons_enabled":   addonsEnabled(),
+				"addons_env":       os.Getenv(addonsEnvVar),
+				"feedback_enabled": feedbackEnabled(),
+				"feedback_env":     os.Getenv(feedbackEnvVar),
 			},
 		})
 
