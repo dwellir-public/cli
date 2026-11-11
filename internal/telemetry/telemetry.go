@@ -27,9 +27,15 @@ type posthogClient interface {
 var posthogAPIKey = ""
 var posthogEndpoint = "https://eu.i.posthog.com"
 
-func Enabled() bool {
+// ProductionAPI reports whether DWELLIR_API_URL is unset or names the
+// production API. Telemetry and feedback are sent only for production.
+func ProductionAPI() bool {
 	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("DWELLIR_API_URL")), "/")
-	if baseURL != "" && baseURL != "https://dashboard.dwellir.com/marly-api" && baseURL != "https://marly.dwellir.com" {
+	return baseURL == "" || baseURL == "https://dashboard.dwellir.com/marly-api" || baseURL == "https://marly.dwellir.com"
+}
+
+func Enabled() bool {
+	if !ProductionAPI() {
 		return false
 	}
 	return posthogAPIKey != "" || strings.TrimSpace(os.Getenv("DWELLIR_POSTHOG_KEY")) != ""

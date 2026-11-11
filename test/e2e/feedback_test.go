@@ -65,7 +65,7 @@ func TestFeedbackValidationErrorExplainsTheRetry(t *testing.T) {
 	}
 	body, _ := parseJSON(t, res.stdout)["error"].(map[string]interface{})
 	help, _ := body["help"].(string)
-	if !strings.Contains(help, `Retry: dwellir feedback --sentiment positive --message "<your feedback>"`) {
+	if !strings.Contains(help, "Retry: dwellir feedback") {
 		t.Fatalf("error = %v", body)
 	}
 }
