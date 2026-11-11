@@ -11,14 +11,10 @@ import (
 	"testing"
 )
 
-func TestFeedbackIsUnknownCommandWhenTheGateIsOff(t *testing.T) {
-	res := runCLIWithEnv(t, map[string]string{"DWELLIR_FEEDBACK": "0"}, "feedback", "--json")
-	if res.exitCode == 0 || !strings.Contains(res.stdout+res.stderr, "unknown command") {
-		t.Fatalf("exit %d, want an unknown command error:\n%s%s", res.exitCode, res.stdout, res.stderr)
-	}
-	help := runCLIWithEnv(t, map[string]string{"DWELLIR_FEEDBACK": "0"}, "--help")
-	if strings.Contains(help.stdout, "feedback") {
-		t.Fatalf("help lists feedback with the gate off:\n%s", help.stdout)
+func TestFeedbackIsListedInHelp(t *testing.T) {
+	help := runCLI(t, "--help")
+	if !strings.Contains(help.stdout, "feedback") {
+		t.Fatalf("help does not list feedback:\n%s", help.stdout)
 	}
 }
 
@@ -39,7 +35,6 @@ func TestFeedbackSendsOneEventToPostHog(t *testing.T) {
 	defer server.Close()
 
 	env := map[string]string{
-		"DWELLIR_FEEDBACK":     "1",
 		"DWELLIR_API_URL":      "",
 		"DWELLIR_POSTHOG_KEY":  "test-key",
 		"DWELLIR_POSTHOG_HOST": server.URL,
@@ -63,20 +58,14 @@ func TestFeedbackSendsOneEventToPostHog(t *testing.T) {
 	}
 }
 
-func TestFeedbackValidationExitCode(t *testing.T) {
-	res := runCLIWithEnv(t, map[string]string{"DWELLIR_FEEDBACK": "1"}, "feedback", "--json", "--sentiment", "positive")
-	if res.exitCode != 4 || parseJSON(t, res.stdout)["ok"] != false {
+func TestFeedbackValidationErrorExplainsTheRetry(t *testing.T) {
+	res := runCLI(t, "feedback", "--json", "--sentiment", "positive")
+	if res.exitCode != 4 {
 		t.Fatalf("exit %d, want 4:\n%s", res.exitCode, res.stdout)
 	}
-}
-
-func TestDoctorReportsTheFeedbackGate(t *testing.T) {
-	for _, env := range []string{"0", "1"} {
-		res := runCLIWithEnv(t, map[string]string{"DWELLIR_FEEDBACK": env}, "doctor", "--json")
-		check := findDoctorCheck(t, parseJSON(t, res.stdout), "feature_gates")
-		details, _ := check["details"].(map[string]interface{})
-		if details["feedback_enabled"] != (env == "1") || details["feedback_env"] != env {
-			t.Fatalf("DWELLIR_FEEDBACK=%s: feature_gates details = %v", env, details)
-		}
+	body, _ := parseJSON(t, res.stdout)["error"].(map[string]interface{})
+	help, _ := body["help"].(string)
+	if !strings.Contains(help, `Retry: dwellir feedback --sentiment positive --message "<your feedback>"`) {
+		t.Fatalf("error = %v", body)
 	}
 }

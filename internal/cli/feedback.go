@@ -62,47 +62,73 @@ Example:
   dwellir feedback --sentiment negative --area docs \
     --message "The Hyperliquid page does not list the WebSocket URL." \
     --context "Setting up an order book stream for a trading bot."`,
-	Args: noArgs(`dwellir feedback --sentiment positive --message "..." --context "..."`),
+	Args: feedbackNoArgs,
 	RunE: withRenderedExitCodes(runFeedback),
+}
+
+// feedbackNoArgs rejects positional arguments. They usually mean an unquoted
+// --message or --context value that the shell split into words.
+func feedbackNoArgs(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	return getFormatter().Error("validation_error",
+		fmt.Sprintf("dwellir feedback takes no positional arguments (got %d: %s). Nothing was sent.",
+			len(args), strings.Join(args, " ")),
+		"Put the text in --message and --context, and quote each value so the shell passes it as one argument.\n"+
+			"Retry: "+feedbackRetryCommand())
 }
 
 func runFeedback(cmd *cobra.Command, args []string) error {
 	f := getFormatter()
-	if feedbackActor == "" {
-		feedbackActor = "human"
-		if isAgentEnvironment() {
-			feedbackActor = "agent"
-		}
-	}
 	// Check the flags that were passed before asking for the rest, so a bad
 	// flag fails at once instead of after the prompts.
-	if err := validateFeedbackFlags(); err != nil {
-		return f.Error("validation_error", err.Error(), "Run 'dwellir feedback --help' for the accepted values.")
+	if bad := invalidFeedbackFlags(); len(bad) > 0 {
+		problems, fixes, flags := make([]string, len(bad)), make([]string, len(bad)), make([]string, len(bad))
+		for i, b := range bad {
+			problems[i], fixes[i], flags[i] = b.problem, b.fix, b.flag
+		}
+		return f.Error("validation_error", strings.Join(problems, " ")+" Nothing was sent.",
+			strings.Join(fixes, "\n")+"\nRetry: "+feedbackRetryCommand(flags...))
 	}
 
 	if missing := missingFeedbackFlags(); len(missing) > 0 {
 		canPrompt := humanOutput && isHumanOutput() && stdinIsTerminal()
 		if !canPrompt {
+			var help strings.Builder
+			for _, flag := range missing {
+				help.WriteString(flag + ": " + feedbackFlagUsage[flag] + "\n")
+			}
+			help.WriteString("Retry: " + feedbackRetryCommand())
+			help.WriteString("\nA person at a terminal can run 'dwellir feedback --human' to be asked for each field instead.")
 			return f.Error("validation_error",
-				"Missing required flags: "+strings.Join(missing, ", ")+".",
-				`Pass every required flag, or run 'dwellir feedback --human' in a terminal to be asked.
-Example: dwellir feedback --sentiment positive --message "..." --context "..."`)
+				"Missing required flags: "+strings.Join(missing, ", ")+". Nothing was sent.", help.String())
 		}
 		if err := promptFeedback(cmd.InOrStdin(), cmd.ErrOrStderr()); err != nil {
-			return f.Error("validation_error", "Feedback was not sent: "+err.Error(), "")
+			return f.Error("validation_error", "Feedback was not sent: "+err.Error()+".",
+				"Run 'dwellir feedback --human' again and answer every question, or pass the flags instead.\n"+
+					"Retry: "+feedbackRetryCommand())
 		}
 	}
 
+	actor := feedbackActor
+	if actor == "" {
+		actor = "human"
+		if isAgentEnvironment() {
+			actor = "agent"
+		}
+	}
 	id, err := uuid.NewV7()
 	if err != nil {
-		return f.Error("error", err.Error(), "")
+		return f.Error("error", "Feedback was not sent: could not create a feedback ID: "+err.Error()+".",
+			"Retry the same command.")
 	}
 	props := map[string]interface{}{
 		"feedback_id":   id.String(),
 		"sentiment":     feedbackSentiment,
 		"message":       cleanFeedbackText(feedbackMessage),
 		"context":       cleanFeedbackText(feedbackContext),
-		"actor":         feedbackActor,
+		"actor":         actor,
 		"channel":       "cli",
 		"agent_env":     isAgentEnvironment(),
 		"agent_markers": presentAgentMarkers(),
@@ -117,14 +143,15 @@ Example: dwellir feedback --sentiment positive --message "..." --context "..."`)
 
 	if err := telemetry.SendFeedback(cmd.Context(), id.String(), props); err != nil {
 		if errors.Is(err, telemetry.ErrFeedbackUnavailable) {
-			return f.Error("feedback_unavailable", "This CLI build cannot send feedback.",
-				"Release builds send feedback. A development build or a custom DWELLIR_API_URL cannot.")
+			return f.Error("feedback_unavailable", "This CLI build cannot send feedback. Nothing was sent.",
+				feedbackUnavailableHelp())
 		}
-		return f.Error("network_error", "Feedback was not sent: "+err.Error(),
-			"Check the network connection and retry.")
+		return f.Error("network_error", "Feedback was not sent: "+err.Error()+".",
+			"Check the network connection, then retry the same command. "+
+				"If the request timed out, the feedback may have arrived; a duplicate is harmless.")
 	}
 
-	result := map[string]string{"id": id.String(), "sentiment": feedbackSentiment, "actor": feedbackActor}
+	result := map[string]string{"id": id.String(), "sentiment": feedbackSentiment, "actor": actor}
 	if feedbackArea != "" {
 		result["area"] = feedbackArea
 	}
@@ -134,31 +161,96 @@ Example: dwellir feedback --sentiment positive --message "..." --context "..."`)
 	})
 }
 
-func validateFeedbackFlags() error {
-	checks := []struct {
+// feedbackFlagUsage describes each flag in the words an error repeats, so a
+// caller can fix the flag without opening --help.
+var feedbackFlagUsage = map[string]string{
+	"--sentiment": "how you feel about it; one of " + strings.Join(feedbackSentiments, ", "),
+	"--message":   fmt.Sprintf("your feedback, %d to %d characters", feedbackMinLen, feedbackMaxLen),
+	"--context":   fmt.Sprintf("what you were trying to do, %d to %d characters", feedbackMinLen, feedbackMaxLen),
+	"--area":      "optional; one of " + strings.Join(feedbackAreas, ", "),
+	"--actor":     "optional; human or agent",
+}
+
+type feedbackFlagProblem struct {
+	flag, problem, fix string
+}
+
+// invalidFeedbackFlags reports every flag with a bad value, so one retry can
+// fix them all.
+func invalidFeedbackFlags() []feedbackFlagProblem {
+	var bad []feedbackFlagProblem
+	for _, c := range []struct {
 		flag, value string
 		allowed     []string
 	}{
 		{"--sentiment", feedbackSentiment, feedbackSentiments},
 		{"--area", feedbackArea, feedbackAreas},
 		{"--actor", feedbackActor, feedbackActors},
-	}
-	for _, c := range checks {
+	} {
 		if c.value != "" && !slices.Contains(c.allowed, c.value) {
-			return fmt.Errorf("%s must be one of: %s", c.flag, strings.Join(c.allowed, ", "))
+			bad = append(bad, feedbackFlagProblem{c.flag,
+				fmt.Sprintf("%s %q is not a valid value.", c.flag, c.value),
+				c.flag + ": use one of " + strings.Join(c.allowed, ", ") + "."})
 		}
 	}
-	if feedbackMessage != "" {
-		if err := checkFeedbackText("--message", feedbackMessage); err != nil {
-			return err
+	for _, c := range []struct{ flag, value string }{
+		{"--message", feedbackMessage},
+		{"--context", feedbackContext},
+	} {
+		if c.value == "" {
+			continue
+		}
+		if err := checkFeedbackText(c.flag, c.value); err != nil {
+			bad = append(bad, feedbackFlagProblem{c.flag, err.Error() + ".",
+				c.flag + ": " + feedbackFlagUsage[c.flag] + ". Quote the value so the shell passes it as one argument."})
 		}
 	}
-	if feedbackContext != "" {
-		if err := checkFeedbackText("--context", feedbackContext); err != nil {
-			return err
+	return bad
+}
+
+// feedbackRetryCommand returns a command line that keeps every valid flag the
+// caller passed and puts a placeholder in each required flag that is missing
+// or named in invalid. An agent can retry by filling in the placeholders.
+func feedbackRetryCommand(invalid ...string) string {
+	parts := []string{"dwellir feedback"}
+	for _, f := range []struct {
+		flag, value, placeholder string
+	}{
+		{"--sentiment", feedbackSentiment, `"<` + strings.Join(feedbackSentiments, "|") + `>"`},
+		{"--message", feedbackMessage, `"<your feedback>"`},
+		{"--context", feedbackContext, `"<what you were trying to do>"`},
+		{"--area", feedbackArea, ""},
+		{"--actor", feedbackActor, ""},
+	} {
+		switch {
+		case f.value != "" && !slices.Contains(invalid, f.flag):
+			parts = append(parts, f.flag, shellQuote(f.value))
+		case f.placeholder != "":
+			parts = append(parts, f.flag, f.placeholder)
 		}
 	}
-	return nil
+	return strings.Join(parts, " ")
+}
+
+// shellQuote returns s unchanged when the shell would pass it as one word,
+// and single-quoted otherwise.
+func shellQuote(s string) string {
+	plain := s != "" && !strings.ContainsFunc(s, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("-_.,:/@", r)
+	})
+	if plain {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func feedbackUnavailableHelp() string {
+	if apiURL := strings.TrimSpace(os.Getenv("DWELLIR_API_URL")); apiURL != "" {
+		return "Feedback goes only to production, and DWELLIR_API_URL is set to " + apiURL +
+			". Unset DWELLIR_API_URL, then retry the same command."
+	}
+	return "This is a development build without the analytics key that release builds carry. " +
+		"Install a release build (see https://github.com/dwellir-public/cli#install), then retry the same command."
 }
 
 func missingFeedbackFlags() []string {
@@ -194,7 +286,7 @@ func cleanFeedbackText(s string) string {
 func checkFeedbackText(field, s string) error {
 	n := utf8.RuneCountInString(cleanFeedbackText(s))
 	if n < feedbackMinLen || n > feedbackMaxLen {
-		return fmt.Errorf("%s must be %d to %d characters (got %d)", field, feedbackMinLen, feedbackMaxLen, n)
+		return fmt.Errorf("%s has %d characters; it needs %d to %d", field, n, feedbackMinLen, feedbackMaxLen)
 	}
 	return nil
 }
@@ -271,7 +363,5 @@ func init() {
 	feedbackCmd.Flags().StringVar(&feedbackActor, "actor", "",
 		"Who wrote the feedback: human or agent (default: agent when a coding agent runs the CLI)")
 
-	if feedbackEnabled() {
-		rootCmd.AddCommand(feedbackCmd)
-	}
+	rootCmd.AddCommand(feedbackCmd)
 }

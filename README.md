@@ -166,6 +166,7 @@ Top-level commands:
 - `dwellir config` — set/get/list CLI config
 - `dwellir profiles` — list/current/bind/unbind profile context
 - `dwellir doctor` — diagnose auth/profile/output state
+- `dwellir feedback` — send feedback to the Dwellir team (`--human` asks for each field)
 - `dwellir version` — build/version metadata
 - `dwellir update` — self-update from GitHub releases
 
@@ -299,7 +300,6 @@ dwellir doctor --verify-api
 - `DWELLIR_POSTHOG_HOST` — override PostHog ingestion host (defaults to `https://eu.i.posthog.com`; useful for self-hosted PostHog)
 - `DWELLIR_STATUS_URL` — override the status API base URL (default: `https://status.dwellir.com`). The `--status-url` flag takes precedence.
 - `DWELLIR_ADDONS` — enable the in-progress `dwellir addons` commands (`1` or `0`, default `0`). Off by default and unsupported: the surface is incomplete and depends on API changes that have not shipped. `dwellir doctor` reports the resolved state.
-- `DWELLIR_FEEDBACK` — enable the in-progress `dwellir feedback` command (`1` or `0`, default `0`). It sends feedback to the team through PostHog as a `cli_feedback` event. It stays off until that event is routed to the team. `dwellir doctor` reports the resolved state.
 
 Telemetry runs only against the production dashboard or Marly API. Custom and staging API URLs disable telemetry.
 Organization grouping uses the backend `organization_id`; cached Outseta IDs and names are never used as group keys.

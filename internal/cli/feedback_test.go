@@ -6,21 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 )
-
-func TestFeedbackCommandRegistrationFollowsTheGate(t *testing.T) {
-	registered := false
-	for _, cmd := range rootCmd.Commands() {
-		if cmd.Name() == "feedback" {
-			registered = true
-		}
-	}
-	if registered != feedbackEnabled() {
-		t.Fatalf("feedback command registered = %v, but the gate is %v", registered, feedbackEnabled())
-	}
-}
 
 type sentFeedback struct {
 	id    string
@@ -29,8 +18,7 @@ type sentFeedback struct {
 
 // runFeedbackCmd runs `dwellir feedback <args>` in process against a local
 // PostHog that answers with posthogStatus. A zero status runs without a
-// PostHog key. Callers clear or set agent markers first. The command is
-// registered for the run, so the test covers it in both gate states.
+// PostHog key. Callers clear or set agent markers first.
 func runFeedbackCmd(t *testing.T, stdin string, terminal bool, posthogStatus int, args ...string) (cliRun, []sentFeedback) {
 	t.Helper()
 	t.Setenv("DWELLIR_CONFIG_DIR", t.TempDir())
@@ -38,11 +26,6 @@ func runFeedbackCmd(t *testing.T, stdin string, terminal bool, posthogStatus int
 	setStdoutTerminalForTest(t, true)
 
 	feedbackSentiment, feedbackMessage, feedbackContext, feedbackArea, feedbackActor = "", "", "", "", ""
-
-	if !feedbackEnabled() {
-		rootCmd.AddCommand(feedbackCmd)
-		t.Cleanup(func() { rootCmd.RemoveCommand(feedbackCmd) })
-	}
 
 	var sent []sentFeedback
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -122,31 +105,93 @@ func TestFeedbackSendsFlagsAndMasksKeys(t *testing.T) {
 	}
 }
 
-func TestFeedbackRejectsBadInputBeforeSending(t *testing.T) {
-	ok := []string{"--sentiment", "positive", "--message", "Works well for me.", "--context", "Listing endpoints."}
+type feedbackErrorBody struct {
+	Code, Message, Help string
+}
+
+func parseFeedbackError(t *testing.T, stdout string) feedbackErrorBody {
+	t.Helper()
+	var resp struct {
+		OK    bool              `json:"ok"`
+		Error feedbackErrorBody `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil || resp.OK {
+		t.Fatalf("want a JSON error, got: %s", stdout)
+	}
+	return resp.Error
+}
+
+// Agents retry from the error alone, so every rejection says that nothing was
+// sent, how to fix the flag, and a retry line that keeps the valid flags.
+func TestFeedbackRejectsBadInputWithARetryLine(t *testing.T) {
+	sentiment := []string{"--sentiment", "positive"}
+	message := []string{"--message", "Works well for me."}
+	context := []string{"--context", "Listing endpoints."}
+	join := func(parts ...[]string) []string { return slices.Concat(parts...) }
 	tests := []struct {
-		name string
-		args []string
-		want string
+		name, wantMessage, wantHelp, wantRetry string
+		args                                   []string
 	}{
-		{"missing flags", []string{"--sentiment", "positive"}, "Missing required flags: --message, --context."},
-		{"bad sentiment", []string{"--sentiment", "meh"}, "--sentiment must be one of"},
-		{"bad area", append([]string{"--area", "nft"}, ok...), "--area must be one of"},
-		{"bad actor", append([]string{"--actor", "bot"}, ok...), "--actor must be one of"},
-		{"short message", []string{"--sentiment", "positive", "--message", "ok", "--context", "Listing endpoints."}, "--message must be 10 to 2000"},
-		{"long context", []string{"--sentiment", "positive", "--message", "Works well for me.", "--context", strings.Repeat("x", 2001)}, "--context must be 10 to 2000"},
-		{"arguments", append([]string{"extra"}, ok...), "Unexpected arguments"},
+		{
+			name: "missing flag", args: join(sentiment, message),
+			wantMessage: "Missing required flags: --context. Nothing was sent.",
+			wantHelp:    "--context: what you were trying to do, 10 to 2000 characters",
+			wantRetry:   `dwellir feedback --sentiment positive --message 'Works well for me.' --context "<what you were trying to do>"`,
+		},
+		{
+			name: "bad sentiment", args: join([]string{"--sentiment", "meh"}, message, context),
+			wantMessage: `--sentiment "meh" is not a valid value. Nothing was sent.`,
+			wantHelp:    "--sentiment: use one of positive, negative, neutral.",
+			wantRetry:   `dwellir feedback --sentiment "<positive|negative|neutral>" --message 'Works well for me.' --context 'Listing endpoints.'`,
+		},
+		{
+			name: "bad area", args: join(sentiment, message, context, []string{"--area", "nft"}),
+			wantMessage: `--area "nft" is not a valid value.`, wantHelp: "--area: use one of addons, auth,",
+			wantRetry: `dwellir feedback --sentiment positive --message 'Works well for me.' --context 'Listing endpoints.'`,
+		},
+		{
+			name: "bad actor", args: join(sentiment, message, context, []string{"--actor", "bot"}),
+			wantMessage: `--actor "bot" is not a valid value.`, wantHelp: "--actor: use one of human, agent.",
+			wantRetry: `--context 'Listing endpoints.'`,
+		},
+		{
+			name: "short message", args: join(sentiment, []string{"--message", "ok"}, context),
+			wantMessage: "--message has 2 characters; it needs 10 to 2000. Nothing was sent.",
+			wantHelp:    "Quote the value",
+			wantRetry:   `dwellir feedback --sentiment positive --message "<your feedback>" --context 'Listing endpoints.'`,
+		},
+		{
+			name: "long context", args: join(sentiment, message, []string{"--context", strings.Repeat("x", 2001)}),
+			wantMessage: "--context has 2001 characters; it needs 10 to 2000.",
+			wantRetry:   `--context "<what you were trying to do>"`,
+		},
+		{
+			name: "several bad flags", args: join([]string{"--sentiment", "good"}, []string{"--message", "it's slow"}, []string{"--context", "x"}),
+			wantMessage: `--sentiment "good" is not a valid value. --message has 9 characters; it needs 10 to 2000. --context has 1 characters; it needs 10 to 2000. Nothing was sent.`,
+			wantHelp:    "--context: what you were trying to do, 10 to 2000 characters. Quote the value",
+			wantRetry:   `dwellir feedback --sentiment "<positive|negative|neutral>" --message "<your feedback>" --context "<what you were trying to do>"`,
+		},
+		{
+			// The shell split an unquoted message into words.
+			name: "unquoted message", args: join(sentiment, []string{"--message", "Works", "well", "for", "me."}, context),
+			wantMessage: "dwellir feedback takes no positional arguments (got 3: well for me.). Nothing was sent.",
+			wantHelp:    "quote each value",
+			wantRetry:   `--message Works`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			clearAgentMarkers(t)
 			// A terminal with JSON output must not prompt either.
 			run, sent := runFeedbackCmd(t, "", true, http.StatusOK, append([]string{"--json"}, tt.args...)...)
-			if len(sent) != 0 {
-				t.Fatalf("sent feedback for invalid input")
+			if len(sent) != 0 || ExitCode(run.err) != exitValidation {
+				t.Fatalf("sent %d, exit %d; want nothing sent and exit %d", len(sent), ExitCode(run.err), exitValidation)
 			}
-			if ExitCode(run.err) != exitValidation || !strings.Contains(run.stdout, tt.want) {
-				t.Fatalf("exit %d, stdout %s; want exit %d with %q", ExitCode(run.err), run.stdout, exitValidation, tt.want)
+			e := parseFeedbackError(t, run.stdout)
+			if e.Code != "validation_error" || !strings.Contains(e.Message, tt.wantMessage) ||
+				!strings.Contains(e.Help, tt.wantHelp) || !strings.Contains(e.Help, "Retry: dwellir feedback") ||
+				!strings.Contains(e.Help, tt.wantRetry) {
+				t.Fatalf("error = %+v\nwant message %q, help %q, retry %q", e, tt.wantMessage, tt.wantHelp, tt.wantRetry)
 			}
 		})
 	}
@@ -177,7 +222,7 @@ func TestFeedbackPromptsForMissingFieldsInATerminal(t *testing.T) {
 	if _, ok := props["area"]; ok {
 		t.Fatalf("skipped area was sent: %v", props["area"])
 	}
-	if !strings.Contains(run.stderr, "sentiment must be one of") || !strings.Contains(run.stderr, "feedback must be 10 to 2000") {
+	if !strings.Contains(run.stderr, "sentiment must be one of") || !strings.Contains(run.stderr, "feedback has 5 characters") {
 		t.Fatalf("invalid answers were not explained:\n%s", run.stderr)
 	}
 	if !strings.Contains(run.stdout, "Thanks.") {
@@ -209,16 +254,18 @@ func TestFeedbackSendErrors(t *testing.T) {
 		name     string
 		status   int
 		wantCode string
+		wantHelp string
 	}{
-		{"no channel in this build", 0, "feedback_unavailable"},
-		{"PostHog rejects the event", http.StatusInternalServerError, "network_error"},
+		{"no channel in this build", 0, "feedback_unavailable", "Install a release build"},
+		{"PostHog rejects the event", http.StatusInternalServerError, "network_error", "retry the same command"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			clearAgentMarkers(t)
 			run, _ := runFeedbackCmd(t, "", false, tt.status, args...)
-			if ExitCode(run.err) != exitError || !strings.Contains(run.stdout, `"code":"`+tt.wantCode+`"`) {
-				t.Fatalf("exit %d, stdout %s; want code %s", ExitCode(run.err), run.stdout, tt.wantCode)
+			e := parseFeedbackError(t, run.stdout)
+			if ExitCode(run.err) != exitError || e.Code != tt.wantCode || !strings.Contains(e.Help, tt.wantHelp) {
+				t.Fatalf("exit %d, error %+v; want code %s with help %q", ExitCode(run.err), e, tt.wantCode, tt.wantHelp)
 			}
 		})
 	}
