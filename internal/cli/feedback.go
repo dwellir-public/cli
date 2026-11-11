@@ -41,9 +41,6 @@ var (
 	feedbackActor     string
 )
 
-// sendFeedback is replaced in tests.
-var sendFeedback = telemetry.SendFeedback
-
 const feedbackNotSupport = "This is not a support channel, and the team cannot reply here. " +
 	"For help with your account, contact Dwellir support through https://dashboard.dwellir.com."
 
@@ -55,13 +52,13 @@ the dashboard, billing and more) from your terminal.
 
 ` + feedbackNotSupport + `
 
-In a terminal, the command asks for each required field you did not pass.
-Scripts and agents pass every required flag.
+With --human in a terminal, the command asks for each required field you
+did not pass. Scripts and agents pass every required flag.
 
 Areas: ` + strings.Join(feedbackAreas, ", ") + `
 
 Example:
-  dwellir feedback
+  dwellir feedback --human
   dwellir feedback --sentiment negative --area docs \
     --message "The Hyperliquid page does not list the WebSocket URL." \
     --context "Setting up an order book stream for a trading bot."`,
@@ -84,11 +81,11 @@ func runFeedback(cmd *cobra.Command, args []string) error {
 	}
 
 	if missing := missingFeedbackFlags(); len(missing) > 0 {
-		canPrompt := stdinIsTerminal() && stdoutIsTerminal() && isHumanOutput()
+		canPrompt := humanOutput && isHumanOutput() && stdinIsTerminal()
 		if !canPrompt {
 			return f.Error("validation_error",
 				"Missing required flags: "+strings.Join(missing, ", ")+".",
-				`Pass every required flag when stdin is not a terminal or output is structured.
+				`Pass every required flag, or run 'dwellir feedback --human' in a terminal to be asked.
 Example: dwellir feedback --sentiment positive --message "..." --context "..."`)
 		}
 		if err := promptFeedback(cmd.InOrStdin(), cmd.ErrOrStderr()); err != nil {
@@ -118,7 +115,7 @@ Example: dwellir feedback --sentiment positive --message "..." --context "..."`)
 		props["terminal_program"] = program
 	}
 
-	if err := sendFeedback(cmd.Context(), id.String(), props); err != nil {
+	if err := telemetry.SendFeedback(cmd.Context(), id.String(), props); err != nil {
 		if errors.Is(err, telemetry.ErrFeedbackUnavailable) {
 			return f.Error("feedback_unavailable", "This CLI build cannot send feedback.",
 				"Release builds send feedback. A development build or a custom DWELLIR_API_URL cannot.")
@@ -133,7 +130,7 @@ Example: dwellir feedback --sentiment positive --message "..." --context "..."`)
 	}
 	return f.Success("feedback", output.Notice{
 		Data: result,
-		Text: "Thanks. Your feedback reached the Dwellir team. " + feedbackNotSupport,
+		Text: "Thanks. Your feedback was sent. " + feedbackNotSupport,
 	})
 }
 
@@ -178,10 +175,14 @@ func missingFeedbackFlags() []string {
 	return missing
 }
 
-// cleanFeedbackText trims the text, drops control characters except newlines,
-// and masks API-key-shaped values, so a pasted key never reaches analytics.
+// cleanFeedbackText trims the text, turns tabs into spaces, drops other
+// control characters except newlines, and masks values shaped like Dwellir API
+// keys, so a pasted key never reaches analytics.
 func cleanFeedbackText(s string) string {
 	s = strings.Map(func(r rune) rune {
+		if r == '\t' {
+			return ' '
+		}
 		if r == '\n' || unicode.IsPrint(r) {
 			return r
 		}
