@@ -166,6 +166,7 @@ Top-level commands:
 - `dwellir config` — set/get/list CLI config
 - `dwellir profiles` — list/current/bind/unbind profile context
 - `dwellir doctor` — diagnose auth/profile/output state
+- `dwellir feedback` — send feedback to the Dwellir team (`--human` asks for each field)
 - `dwellir version` — build/version metadata
 - `dwellir update` — self-update from GitHub releases
 
