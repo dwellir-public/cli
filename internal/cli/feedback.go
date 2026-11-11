@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -82,23 +83,55 @@ func feedbackNoArgs(cmd *cobra.Command, args []string) error {
 
 // feedbackFlagError handles flag parse errors, such as a misspelled flag or a
 // flag without a value, with the same guidance as a bad value. Parsing stops
-// at the bad flag, so the arguments are parsed again with unknown flags
-// skipped. That recovers every valid flag for the retry line, including
-// --anon-telemetry and the output format.
+// at the bad flag, so the arguments are parsed again with unknown flags and
+// malformed boolean values skipped. That recovers every valid flag for the
+// retry line, including --anon-telemetry and the output format.
 func feedbackFlagError(cmd *cobra.Command, err error) error {
 	lenient := pflag.NewFlagSet("feedback", pflag.ContinueOnError)
 	lenient.SetOutput(io.Discard)
 	lenient.ParseErrorsAllowlist.UnknownFlags = true
 	lenient.AddFlagSet(cmd.Flags())
+	var lenientErr error
 	if i := slices.Index(os.Args, cmd.Name()); i >= 0 {
-		_ = lenient.Parse(os.Args[i+1:])
+		lenientErr = lenient.Parse(withoutMalformedBools(lenient, os.Args[i+1:]))
 	}
 
+	// A flag at the end of the line can lack its value. Ask for it again.
 	var replace []string
-	if name, ok := strings.CutPrefix(err.Error(), "flag needs an argument: "); ok && slices.Contains(feedbackFlagOrder, name) {
-		replace = append(replace, name)
+	for _, e := range []error{err, lenientErr} {
+		if e == nil {
+			continue
+		}
+		name, ok := strings.CutPrefix(e.Error(), "flag needs an argument: ")
+		if ok && feedbackFlagUsage[name] != "" && !slices.Contains(replace, name) {
+			replace = append(replace, name)
+		}
 	}
 	return feedbackInputError(err.Error()+".", replace, "Run 'dwellir feedback --help' for every flag.")
+}
+
+// withoutMalformedBools drops boolean flags whose value does not parse, such
+// as --quiet=no, which would otherwise stop the lenient parse again.
+func withoutMalformedBools(fs *pflag.FlagSet, args []string) []string {
+	kept := make([]string, 0, len(args))
+	for _, arg := range args {
+		name, value, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+		var flag *pflag.Flag
+		switch {
+		case !hasValue || !strings.HasPrefix(arg, "-"):
+		case strings.HasPrefix(arg, "--"):
+			flag = fs.Lookup(name)
+		case len(name) == 1:
+			flag = fs.ShorthandLookup(name)
+		}
+		if flag != nil && flag.Value.Type() == "bool" {
+			if _, err := strconv.ParseBool(value); err != nil {
+				continue
+			}
+		}
+		kept = append(kept, arg)
+	}
+	return kept
 }
 
 func runFeedback(cmd *cobra.Command, args []string) error {
@@ -181,6 +214,7 @@ var feedbackFlagUsage = map[string]string{
 	"--context":   fmt.Sprintf("what you were trying to do, %d to %d characters", feedbackMinLen, feedbackMaxLen),
 	"--area":      "optional; one of " + strings.Join(feedbackAreas, ", "),
 	"--actor":     "optional; human or agent",
+	"--profile":   "the auth profile to use; run 'dwellir profiles list' to see them",
 }
 
 type feedbackFlagProblem struct {
@@ -238,7 +272,7 @@ func feedbackInputError(problem string, replace []string, notes ...string) error
 	if len(missing) > 0 {
 		problems = append(problems, "Missing required flags: "+strings.Join(missing, ", ")+".")
 	}
-	for _, flag := range feedbackFlagOrder {
+	for _, flag := range append([]string{"--profile"}, feedbackFlagOrder...) {
 		if i := slices.IndexFunc(bad, func(b feedbackFlagProblem) bool { return b.flag == flag }); i >= 0 {
 			rules = append(rules, bad[i].fix)
 		} else if slices.Contains(missing, flag) || slices.Contains(replace, flag) {
@@ -268,6 +302,8 @@ func feedbackRetryCommand(replace []string) string {
 		// Global flags are shared *pflag.Flag values, so Changed is set here too.
 		flag := rootCmd.PersistentFlags().Lookup(name)
 		switch {
+		case name == "profile" && slices.Contains(replace, "--profile"):
+			parts = append(parts, "--profile", "'<profile name>'")
 		case flag == nil || !flag.Changed:
 		case flag.Value.Type() == "bool" && flag.Value.String() == "true":
 			parts = append(parts, "--"+name)

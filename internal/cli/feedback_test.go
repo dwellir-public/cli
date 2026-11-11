@@ -219,6 +219,24 @@ func TestFeedbackRejectsBadInputWithARetryLine(t *testing.T) {
 			wantRetry:   `dwellir feedback --profile=work --json --anon-telemetry --sentiment '<positive|negative|neutral>' --message 'Works well for me.' --context 'Listing endpoints.'`,
 		},
 		{
+			// A malformed boolean must not stop the recovery of later flags.
+			name: "malformed boolean before other flags", args: join([]string{"--quiet=no", "--anon-telemetry"}, sentiment, message, context),
+			wantMessage: `invalid argument "no" for "-q, --quiet" flag`,
+			wantRetry:   `dwellir feedback --json --anon-telemetry --sentiment positive --message 'Works well for me.' --context 'Listing endpoints.'`,
+		},
+		{
+			name: "unknown flag and a trailing flag without a value", args: join([]string{"--typo"}, sentiment, message, context, []string{"--area"}),
+			wantMessage: "unknown flag: --typo.",
+			wantHelp:    "--area: optional; one of addons,",
+			wantRetry:   `--context 'Listing endpoints.' --area '<addons|`,
+		},
+		{
+			name: "profile without a value", args: join(sentiment, message, context, []string{"--profile"}),
+			wantMessage: "flag needs an argument: --profile.",
+			wantHelp:    "--profile: the auth profile to use",
+			wantRetry:   `dwellir feedback --profile '<profile name>' --json --sentiment positive`,
+		},
+		{
 			name: "optional flag without a value", args: join(sentiment, message, context, []string{"--area"}),
 			wantMessage: "flag needs an argument: --area. Nothing was sent.",
 			wantHelp:    "--area: optional; one of addons,",
