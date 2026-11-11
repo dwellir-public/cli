@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/dwellir-public/cli/internal/api"
 	"github.com/dwellir-public/cli/internal/output"
@@ -80,13 +81,28 @@ func feedbackNoArgs(cmd *cobra.Command, args []string) error {
 }
 
 // feedbackFlagError handles flag parse errors, such as a misspelled flag or a
-// flag without a value, with the same guidance as a bad value.
+// flag without a value, with the same guidance as a bad value. Parsing stops
+// at the bad flag, so the arguments are parsed again with unknown flags
+// skipped. That recovers every valid flag for the retry line, including
+// --anon-telemetry and the output format.
 func feedbackFlagError(cmd *cobra.Command, err error) error {
-	return feedbackInputError(err.Error()+".", nil, "Run 'dwellir feedback --help' for every flag.")
+	lenient := pflag.NewFlagSet("feedback", pflag.ContinueOnError)
+	lenient.SetOutput(io.Discard)
+	lenient.ParseErrorsAllowlist.UnknownFlags = true
+	lenient.AddFlagSet(cmd.Flags())
+	if i := slices.Index(os.Args, cmd.Name()); i >= 0 {
+		_ = lenient.Parse(os.Args[i+1:])
+	}
+
+	var replace []string
+	if name, ok := strings.CutPrefix(err.Error(), "flag needs an argument: "); ok && slices.Contains(feedbackFlagOrder, name) {
+		replace = append(replace, name)
+	}
+	return feedbackInputError(err.Error()+".", replace, "Run 'dwellir feedback --help' for every flag.")
 }
 
 func runFeedback(cmd *cobra.Command, args []string) error {
-	f := feedbackFormatter()
+	f := getFormatter()
 	// Check the flags that were passed before asking for the rest, so a bad
 	// flag fails at once instead of after the prompts.
 	canPrompt := humanOutput && isHumanOutput() && stdinIsTerminal()
@@ -229,28 +245,23 @@ func feedbackInputError(problem string, replace []string, notes ...string) error
 			rules = append(rules, flag+": "+feedbackFlagUsage[flag]+".")
 		}
 	}
+	retry := feedbackRetryCommand(replace)
 	help := append(rules, notes...)
-	help = append(help, "Retry: "+feedbackRetryCommand(replace),
-		"Replace each <...> placeholder inside its single quotes.")
-	return feedbackFormatter().Error("validation_error",
-		strings.Join(problems, " ")+" Nothing was sent.", strings.Join(help, "\n"))
-}
-
-// feedbackFormatter honours an output flag even when flag parsing stopped
-// before reaching it, as Execute does for unrendered errors.
-func feedbackFormatter() output.Formatter {
-	if explicit := explicitOutputFromArgs(os.Args[1:]); explicit != "" {
-		return output.New(explicit, rootCmd.OutOrStdout())
+	help = append(help, "Retry: "+retry)
+	if strings.Contains(retry, "'<") {
+		help = append(help, "Replace each <...> placeholder inside its single quotes.")
 	}
-	return getFormatter()
+	return getFormatter().Error("validation_error",
+		strings.Join(problems, " ")+" Nothing was sent.", strings.Join(help, "\n"))
 }
 
 var feedbackFlagOrder = []string{"--sentiment", "--message", "--context", "--area", "--actor"}
 
 // feedbackRetryCommand returns a command line that keeps the global flags and
 // every valid feedback flag the caller passed. Each required flag that is
-// missing or named in replace gets a placeholder. The placeholders fail
-// validation, so a retry that still contains one sends nothing.
+// missing, and each flag named in replace, gets a placeholder. The
+// placeholders fail validation, so a retry that still contains one sends
+// nothing.
 func feedbackRetryCommand(replace []string) string {
 	parts := []string{"dwellir feedback"}
 	for _, name := range []string{"profile", "json", "toon", "human", "quiet", "anon-telemetry"} {
@@ -266,18 +277,19 @@ func feedbackRetryCommand(replace []string) string {
 	}
 	for _, f := range []struct {
 		flag, value, placeholder string
+		required                 bool
 	}{
-		{"--sentiment", feedbackSentiment, "'<" + strings.Join(feedbackSentiments, "|") + ">'"},
-		{"--message", feedbackMessage, "'<your feedback>'"},
-		{"--context", feedbackContext, "'<what you were trying to do>'"},
-		{"--area", feedbackArea, ""},
-		{"--actor", feedbackActor, ""},
+		{"--sentiment", feedbackSentiment, "'<" + strings.Join(feedbackSentiments, "|") + ">'", true},
+		{"--message", feedbackMessage, "'<your feedback>'", true},
+		{"--context", feedbackContext, "'<what you were trying to do>'", true},
+		{"--area", feedbackArea, "'<" + strings.Join(feedbackAreas, "|") + ">'", false},
+		{"--actor", feedbackActor, "'<" + strings.Join(feedbackActors, "|") + ">'", false},
 	} {
 		switch {
-		case f.value != "" && !slices.Contains(replace, f.flag):
-			parts = append(parts, f.flag, shellQuote(f.value))
-		case f.placeholder != "":
+		case slices.Contains(replace, f.flag) || (f.required && f.value == ""):
 			parts = append(parts, f.flag, f.placeholder)
+		case f.value != "":
+			parts = append(parts, f.flag, shellQuote(f.value))
 		}
 	}
 	return strings.Join(parts, " ")

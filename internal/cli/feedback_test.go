@@ -213,6 +213,18 @@ func TestFeedbackRejectsBadInputWithARetryLine(t *testing.T) {
 			wantRetry:   `--sentiment '<positive|negative|neutral>' --message 'Works well for me.' --context 'Listing endpoints.'`,
 		},
 		{
+			// Parsing stops at the typo; flags after it must still reach the retry.
+			name: "flags after an unknown flag", args: join([]string{"--sentimant", "positive", "--anon-telemetry", "--profile", "work"}, message, context),
+			wantMessage: "unknown flag: --sentimant. Missing required flags: --sentiment.",
+			wantRetry:   `dwellir feedback --profile=work --json --anon-telemetry --sentiment '<positive|negative|neutral>' --message 'Works well for me.' --context 'Listing endpoints.'`,
+		},
+		{
+			name: "optional flag without a value", args: join(sentiment, message, context, []string{"--area"}),
+			wantMessage: "flag needs an argument: --area. Nothing was sent.",
+			wantHelp:    "--area: optional; one of addons,",
+			wantRetry:   `--context 'Listing endpoints.' --area '<addons|auth|`,
+		},
+		{
 			// Dropping --anon-telemetry from the retry would identify the sender.
 			name: "global flags kept", args: join([]string{"--anon-telemetry", "--profile", "work"}, sentiment, message),
 			wantMessage: "Missing required flags: --context.",
