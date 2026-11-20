@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 )
 
@@ -172,6 +173,56 @@ func TestSearchEndpointsByProtocolFilter(t *testing.T) {
 	}
 	if wssOnly[0].Networks[0].Nodes[0].HTTPS != "" {
 		t.Fatalf("expected https endpoint to be removed for --protocol wss, got %q", wssOnly[0].Networks[0].Nodes[0].HTTPS)
+	}
+}
+
+func TestSearchEndpointsGRPC(t *testing.T) {
+	// Node 1 has no grpc field, as Marly sends before release 3.18.0. Node 2 serves only gRPC.
+	const body = `[{"id": 1, "name": "Hyperliquid", "networks": [{"id": 1, "name": "Mainnet", "nodes": [
+  {"id": 1, "https": "https://api-hyperliquid-mainnet.n.dwellir.com/<key>", "wss": null, "node_type": {"name": "Full"}},
+  {"id": 2, "https": null, "wss": null, "grpc": "api-hyperliquid-mainnet-grpc.n.dwellir.com:443", "node_type": {"name": "Full"}},
+  {"id": 3, "https": "https://api-x.n.dwellir.com/<key>", "wss": null, "grpc": "api-x.n.dwellir.com:443", "node_type": {"name": "Full"}}
+]}]}]`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+	ep := NewEndpointsAPI(NewClient(server.URL, "token"))
+
+	tests := []struct {
+		protocol string
+		want     []Node // only ID, HTTPS and GRPC are compared
+	}{
+		{"", []Node{
+			{ID: 1, HTTPS: "https://api-hyperliquid-mainnet.n.dwellir.com/<key>"},
+			{ID: 2, GRPC: "api-hyperliquid-mainnet-grpc.n.dwellir.com:443"},
+			{ID: 3, HTTPS: "https://api-x.n.dwellir.com/<key>", GRPC: "api-x.n.dwellir.com:443"},
+		}},
+		{"grpc", []Node{{ID: 2, GRPC: "api-hyperliquid-mainnet-grpc.n.dwellir.com:443"}, {ID: 3, GRPC: "api-x.n.dwellir.com:443"}}},
+		{"https", []Node{
+			{ID: 1, HTTPS: "https://api-hyperliquid-mainnet.n.dwellir.com/<key>"},
+			{ID: 3, HTTPS: "https://api-x.n.dwellir.com/<key>"},
+		}},
+		{"wss", nil},
+	}
+	for _, tt := range tests {
+		t.Run("protocol="+tt.protocol, func(t *testing.T) {
+			chains, err := ep.Search("", "", "", tt.protocol, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []Node
+			for _, chain := range chains {
+				for _, network := range chain.Networks {
+					for _, node := range network.Nodes {
+						got = append(got, Node{ID: node.ID, HTTPS: node.HTTPS, GRPC: node.GRPC})
+					}
+				}
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("got %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }
 

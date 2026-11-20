@@ -257,6 +257,25 @@ func TestHumanEndpointsUsesProtocolColumn(t *testing.T) {
 	}
 }
 
+func TestHumanEndpointsShowsGRPCOnlyNode(t *testing.T) {
+	var buf bytes.Buffer
+	err := NewHumanFormatter(&buf).Success("endpoints.list", []api.Chain{{
+		Name: "Hyperliquid",
+		Networks: []api.Network{{
+			Name:  "Mainnet",
+			Nodes: []api.Node{{NodeType: api.NodeType{Name: "Full"}, GRPC: "api-hyperliquid-mainnet-grpc.n.dwellir.com:443"}},
+		}},
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "grpc") || !strings.Contains(got, "api-hyperliquid-mainnet-grpc.n.dwellir.com:443") {
+		t.Fatalf("expected a grpc row with the dial target, got:\n%s", got)
+	}
+}
+
 func TestHumanUsageMethodsBreakdown(t *testing.T) {
 	var buf bytes.Buffer
 	f := NewHumanFormatter(&buf)

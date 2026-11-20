@@ -664,26 +664,18 @@ func (f *HumanFormatter) writeEndpoints(data interface{}) error {
 	for _, chain := range chains {
 		for _, network := range chain.Networks {
 			for _, node := range network.Nodes {
-				if node.HTTPS != "" {
+				for _, target := range [][2]string{{"https", node.HTTPS}, {"wss", node.WSS}, {"grpc", node.GRPC}} {
+					if target[1] == "" {
+						continue
+					}
 					rows = append(rows, endpointTableRow{
 						chain:     chain.Name,
 						ecosystem: chain.Ecosystem,
 						network:   network.Name,
 						nodeType:  node.NodeType.Name,
 						premium:   formatPremiumLabel(node),
-						protocol:  "https",
-						endpoint:  node.HTTPS,
-					})
-				}
-				if node.WSS != "" {
-					rows = append(rows, endpointTableRow{
-						chain:     chain.Name,
-						ecosystem: chain.Ecosystem,
-						network:   network.Name,
-						nodeType:  node.NodeType.Name,
-						premium:   formatPremiumLabel(node),
-						protocol:  "wss",
-						endpoint:  node.WSS,
+						protocol:  target[0],
+						endpoint:  target[1],
 					})
 				}
 			}

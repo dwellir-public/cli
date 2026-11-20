@@ -108,3 +108,53 @@ func TestProjectNodeListsCandidatesWhenAmbiguous(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectSetupWritesGRPCOnlyEndpoint(t *testing.T) {
+	const target = "api-hyperliquid-mainnet-grpc.n.dwellir.com:443"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v3/chains":
+			_, _ = w.Write([]byte(`[{"id": 1, "name": "Hyperliquid gRPC", "networks": [{"id": 1, "name": "Mainnet", "nodes": [
+  {"id": 1, "https": null, "wss": null, "grpc": "` + target + `", "node_type": {"name": "Full"}}]}]}]`))
+		case "/v4/organization/apikeys":
+			_, _ = w.Write([]byte(`[{"api_key": "synthetic-key", "name": "project", "enabled": true}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("DWELLIR_CONFIG_DIR", t.TempDir())
+	t.Setenv("DWELLIR_TOKEN", "synthetic-token")
+	t.Setenv("DWELLIR_API_URL", server.URL)
+
+	cmd := newProjectCommand()
+	cmd.SetArgs([]string{"setup", "--chain", "hyperliquid-grpc", "--network", "mainnet", "--key-name", "project"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("setup rejected a gRPC-only endpoint: %v", err)
+	}
+	env, err := os.ReadFile(filepath.Join(dir, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"DWELLIR_API_KEY='synthetic-key'", "DWELLIR_GRPC_TARGET='" + target + "'", "DWELLIR_RPC_URL=''", "DWELLIR_WSS_URL=''"} {
+		if !strings.Contains(string(env), want) {
+			t.Errorf("expected %s in .env, got:\n%s", want, env)
+		}
+	}
+}
+
+func TestProjectRejectsUnsafeGRPCTarget(t *testing.T) {
+	for _, target := range []string{
+		"api.example.com:443",
+		"api-x.n.dwellir.com",
+		"api-x.n.dwellir.com:50051",
+		"api-x.n.dwellir.com:443/secret",
+		"user@api-x.n.dwellir.com:443",
+	} {
+		if err := validateProjectGRPCTarget(target); err == nil {
+			t.Errorf("accepted %q", target)
+		}
+	}
+}

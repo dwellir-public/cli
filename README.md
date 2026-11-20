@@ -87,6 +87,10 @@ dwellir endpoints search ethereum --protocol https
 dwellir endpoints get base
 ```
 
+`--protocol` accepts `https`, `wss`, and `grpc`. HTTPS and WSS URLs hold the API key in the path.
+A gRPC endpoint shows the dial target `<host>:443`, which holds no key.
+A gRPC client connects with TLS and sends the key in the `x-api-key` metadata header.
+
 ### 3) Search docs from the terminal
 
 ```bash

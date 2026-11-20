@@ -18,7 +18,9 @@ Tracked files and unreadable Git indexes are rejected before creating a key.
 Existing Dwellir values require `--replace`.
 Unrelated single-line settings are preserved. Multiline environment values require manual configuration.
 
-The file contains `DWELLIR_API_KEY`, `DWELLIR_RPC_URL`, and `DWELLIR_WSS_URL`.
+The file contains `DWELLIR_API_KEY`, `DWELLIR_RPC_URL`, `DWELLIR_WSS_URL`, and `DWELLIR_GRPC_TARGET`.
+`DWELLIR_GRPC_TARGET` is the gRPC dial target `<host>:443`. It contains no key.
+A gRPC client connects with TLS and sends `DWELLIR_API_KEY` in the `x-api-key` metadata header.
 Unsupported transports receive empty values, preventing stale URLs after replacement.
 Command output reports the filename and configured transports without credentials.
 Never print the environment file or commit it.

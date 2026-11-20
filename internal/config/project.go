@@ -127,7 +127,7 @@ func ValidateProjectEnv(dir, filename string, replace bool) error {
 	if err != nil {
 		return err
 	}
-	_, err = mergeProjectEnv(string(old), map[string]string{"DWELLIR_API_KEY": "", "DWELLIR_RPC_URL": "", "DWELLIR_WSS_URL": ""}, replace)
+	_, err = mergeProjectEnv(string(old), map[string]string{"DWELLIR_API_KEY": "", "DWELLIR_RPC_URL": "", "DWELLIR_WSS_URL": "", "DWELLIR_GRPC_TARGET": ""}, replace)
 	if err != nil {
 		return err
 	}

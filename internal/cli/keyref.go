@@ -23,6 +23,8 @@ const endpointKeyNotice = "URLs contain a <key> placeholder. Run 'dwellir keys e
 	"and replace <key> with it at runtime, or run 'dwellir project setup --chain <chain> --network <network> --key-name <name>' " +
 	"to write full URLs to .env."
 
+const grpcKeyNotice = "A gRPC target contains no API key. Dial the target with TLS and send the key in the x-api-key metadata header."
+
 // withNotice attaches notice when show is true.
 func withNotice(data interface{}, show bool, notice string) interface{} {
 	if !show {

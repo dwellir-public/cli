@@ -81,3 +81,38 @@ func TestEndpointsHelpShowsFilters(t *testing.T) {
 		t.Fatalf("expected endpoints help to mention filter flags, got:\n%s", res.stdout)
 	}
 }
+
+func TestEndpointsShowGRPCTarget(t *testing.T) {
+	const target = "api-hyperliquid-mainnet-grpc.n.dwellir.com:443"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v3/chains" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`[{"id": 1, "name": "Hyperliquid", "ecosystem": "hyperliquid", "networks": [{"id": 1, "name": "Mainnet", "nodes": [
+  {"id": 1, "https": "https://api-hyperliquid-mainnet.n.dwellir.com/<key>", "wss": null, "node_type": {"name": "Full"}},
+  {"id": 2, "https": null, "wss": null, "grpc": "` + target + `", "node_type": {"name": "Full"}}
+]}]}]`))
+	}))
+	defer server.Close()
+	env := map[string]string{"DWELLIR_TOKEN": "test-token", "DWELLIR_API_URL": server.URL}
+
+	res := runCLIWithEnv(t, env, "endpoints", "list", "--protocol", "grpc", "--json")
+	if res.exitCode != 0 {
+		t.Fatalf("expected success exit code, got %d\nstderr: %s\nstdout: %s", res.exitCode, res.stderr, res.stdout)
+	}
+	parsed := parseJSON(t, res.stdout)
+	nodes := parsed["data"].([]interface{})[0].(map[string]interface{})["networks"].([]interface{})[0].(map[string]interface{})["nodes"].([]interface{})
+	if len(nodes) != 1 || nodes[0].(map[string]interface{})["grpc"] != target {
+		t.Fatalf("expected only the gRPC node with its target, got %v", nodes)
+	}
+	notice, _ := parsed["meta"].(map[string]interface{})["notice"].(string)
+	if !strings.Contains(notice, "x-api-key metadata header") {
+		t.Fatalf("expected the x-api-key notice, got %q", notice)
+	}
+
+	res = runCLIWithEnv(t, env, "endpoints", "list", "--human")
+	if res.exitCode != 0 || !strings.Contains(res.stdout, target) || !strings.Contains(res.stdout, "x-api-key metadata header") {
+		t.Fatalf("expected the gRPC target and the x-api-key note in human output, got %d\n%s", res.exitCode, res.stdout)
+	}
+}

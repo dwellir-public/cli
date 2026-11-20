@@ -47,7 +47,7 @@ func ApplyPremiumEndpointLabels(chains []Chain, account *AccountInfo) []Chain {
 		for networkIdx := range chains[chainIdx].Networks {
 			for nodeIdx := range chains[chainIdx].Networks[networkIdx].Nodes {
 				node := &chains[chainIdx].Networks[networkIdx].Nodes[nodeIdx]
-				hostSlug := endpointHostSlug(node.HTTPS, node.WSS)
+				hostSlug := endpointHostSlug(node.HTTPS, node.WSS, node.GRPC)
 				if hostSlug == "" {
 					continue
 				}
@@ -69,8 +69,8 @@ func ApplyPremiumEndpointLabels(chains []Chain, account *AccountInfo) []Chain {
 	return chains
 }
 
-func endpointHostSlug(httpsURL, wssURL string) string {
-	for _, raw := range []string{httpsURL, wssURL} {
+func endpointHostSlug(targets ...string) string {
+	for _, raw := range targets {
 		if slug := NormalizeEndpointSlug(raw); slug != "" {
 			return slug
 		}

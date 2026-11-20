@@ -28,7 +28,7 @@ var endpointsCmd = &cobra.Command{
 Use filter flags with any subcommand:
   --ecosystem  Filter by ecosystem (evm, substrate, cosmos, move, hyperliquid, other)
   --node-type  Filter by node type (full, archive)
-  --protocol   Filter by protocol (https, wss)
+  --protocol   Filter by protocol (https, wss, grpc)
   --network    Filter by network (mainnet, testnet, or network name)
 
 Examples:
@@ -54,7 +54,7 @@ var endpointsListCmd = &cobra.Command{
 		}
 		chains = applyPremiumEndpointAccess(client, chains)
 		f := getFormatter()
-		return f.Success("endpoints.list", withNotice(chains, endpointsHaveKeyPlaceholder(chains), endpointKeyNotice))
+		return f.Success("endpoints.list", withEndpointNotices(chains))
 	},
 }
 
@@ -76,7 +76,7 @@ var endpointsSearchCmd = &cobra.Command{
 		}
 		chains = applyPremiumEndpointAccess(client, chains)
 		f := getFormatter()
-		return f.Success("endpoints.search", withNotice(chains, endpointsHaveKeyPlaceholder(chains), endpointKeyNotice))
+		return f.Success("endpoints.search", withEndpointNotices(chains))
 	},
 }
 
@@ -101,14 +101,14 @@ var endpointsGetCmd = &cobra.Command{
 		if len(chains) == 0 {
 			return f.Error("not_found", "No endpoints found for '"+chainLookup+"'.", "Run 'dwellir endpoints list' to see all available chains.")
 		}
-		return f.Success("endpoints.get", withNotice(chains, endpointsHaveKeyPlaceholder(chains), endpointKeyNotice))
+		return f.Success("endpoints.get", withEndpointNotices(chains))
 	},
 }
 
 func init() {
 	endpointsCmd.PersistentFlags().StringVar(&epEcosystem, "ecosystem", "", "Filter by ecosystem (evm, substrate, cosmos, move, hyperliquid, other)")
 	endpointsCmd.PersistentFlags().StringVar(&epNodeType, "node-type", "", "Filter by node type (full, archive)")
-	endpointsCmd.PersistentFlags().StringVar(&epProtocol, "protocol", "", "Filter by protocol (https, wss)")
+	endpointsCmd.PersistentFlags().StringVar(&epProtocol, "protocol", "", "Filter by protocol (https, wss, grpc)")
 	endpointsCmd.PersistentFlags().StringVar(&epNetwork, "network", "", "Filter by network (mainnet, testnet, or network name)")
 	// --key used to put the full key into the URLs. It stays defined so old
 	// scripts get a clear error instead of URLs that silently lack the key.
@@ -214,15 +214,23 @@ func applyPremiumEndpointAccess(client *api.Client, chains []api.Chain) []api.Ch
 	return api.ApplyPremiumEndpointLabels(chains, info)
 }
 
-func endpointsHaveKeyPlaceholder(chains []api.Chain) bool {
+// withEndpointNotices explains how to send the key for each kind of target in chains.
+func withEndpointNotices(chains []api.Chain) interface{} {
+	var placeholder, grpc bool
 	for _, chain := range chains {
 		for _, network := range chain.Networks {
 			for _, node := range network.Nodes {
-				if strings.Contains(node.HTTPS, "<key>") || strings.Contains(node.WSS, "<key>") {
-					return true
-				}
+				placeholder = placeholder || strings.Contains(node.HTTPS, "<key>") || strings.Contains(node.WSS, "<key>")
+				grpc = grpc || node.GRPC != ""
 			}
 		}
 	}
-	return false
+	var notices []string
+	if placeholder {
+		notices = append(notices, endpointKeyNotice)
+	}
+	if grpc {
+		notices = append(notices, grpcKeyNotice)
+	}
+	return withNotice(chains, len(notices) > 0, strings.Join(notices, " "))
 }
