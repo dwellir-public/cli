@@ -19,10 +19,13 @@ type Network struct {
 	Nodes []Node `json:"nodes"`
 }
 
+// Node is one endpoint. GRPC is the dial target "<fqdn>:443". It holds no key:
+// a gRPC client sends the key in the x-api-key metadata header.
 type Node struct {
 	ID            int      `json:"id"`
 	HTTPS         string   `json:"https"`
 	WSS           string   `json:"wss"`
+	GRPC          string   `json:"grpc"`
 	NodeType      NodeType `json:"node_type"`
 	Premium       bool     `json:"premium,omitempty"`
 	PremiumStatus string   `json:"premiumStatus,omitempty"`
@@ -175,12 +178,17 @@ func filterNetwork(net Network, nodeType string, protocol string, network string
 		if protocol == "wss" && node.WSS == "" {
 			continue
 		}
+		if protocol == "grpc" && node.GRPC == "" {
+			continue
+		}
 		filteredNode := node
 		switch protocol {
 		case "https":
-			filteredNode.WSS = ""
+			filteredNode.WSS, filteredNode.GRPC = "", ""
 		case "wss":
-			filteredNode.HTTPS = ""
+			filteredNode.HTTPS, filteredNode.GRPC = "", ""
+		case "grpc":
+			filteredNode.HTTPS, filteredNode.WSS = "", ""
 		}
 		matchedNodes = append(matchedNodes, filteredNode)
 	}

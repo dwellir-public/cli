@@ -172,6 +172,15 @@ func TestApplyPremiumEndpointLabelsCoversEveryLockedEndpointRule(t *testing.T) {
 	}
 }
 
+func TestApplyPremiumEndpointLabelsReadsGRPCOnlyNode(t *testing.T) {
+	chains := []Chain{{Networks: []Network{{Nodes: []Node{{GRPC: "api-hyperliquid-mainnet-grpc.n.dwellir.com:443"}}}}}}
+
+	node := ApplyPremiumEndpointLabels(chains, nil)[0].Networks[0].Nodes[0]
+	if !node.Premium || node.PremiumStatus != string(PremiumStatusLocked) {
+		t.Fatalf("expected a gRPC-only premium endpoint to be labelled locked, got %+v", node)
+	}
+}
+
 func TestApplyPremiumEndpointLabelsLeavesUnlistedEndpointsStandard(t *testing.T) {
 	chains := []Chain{{
 		Name: "Ethereum",

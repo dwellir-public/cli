@@ -101,7 +101,10 @@ func (options *projectOptions) run(cmd *cobra.Command, _ []string) error {
 	if err := config.WriteProjectEnv(dir, options.envFile, values, options.replace); err != nil {
 		return getFormatter().Error("configuration_error", err.Error(), projectEnvHelp)
 	}
-	return getFormatter().Success("project.setup", map[string]interface{}{"file": options.envFile, "configured": true, "https": node.HTTPS != "", "wss": node.WSS != ""})
+	result := map[string]interface{}{
+		"file": options.envFile, "configured": true, "https": node.HTTPS != "", "wss": node.WSS != "", "grpc": node.GRPC != "",
+	}
+	return getFormatter().Success("project.setup", withNotice(result, node.GRPC != "", grpcKeyNotice))
 }
 
 func projectNode(chains []api.Chain) (api.Node, error) {
@@ -122,13 +125,16 @@ func projectNode(chains []api.Chain) (api.Node, error) {
 		return api.Node{}, fmt.Errorf("select exactly one endpoint; %d match: %s", len(nodes), strings.Join(candidates, "; "))
 	}
 	node := nodes[0]
-	if node.HTTPS == "" && node.WSS == "" {
+	if node.HTTPS == "" && node.WSS == "" && node.GRPC == "" {
 		return api.Node{}, errors.New("the endpoint has no supported connection URL")
 	}
 	if err := validateProjectURL(node.HTTPS, "https"); err != nil {
 		return api.Node{}, err
 	}
 	if err := validateProjectURL(node.WSS, "wss"); err != nil {
+		return api.Node{}, err
+	}
+	if err := validateProjectGRPCTarget(node.GRPC); err != nil {
 		return api.Node{}, err
 	}
 
@@ -220,6 +226,19 @@ func validateProjectURL(endpoint, scheme string) error {
 	return nil
 }
 
+// validateProjectGRPCTarget accepts only "<host>.dwellir.com:443". The target
+// holds no key, path, or user information.
+func validateProjectGRPCTarget(target string) error {
+	if target == "" {
+		return nil
+	}
+	parsed, err := url.Parse("//" + target)
+	if err != nil || parsed.Host != target || parsed.Port() != "443" || !strings.HasSuffix(parsed.Hostname(), ".dwellir.com") {
+		return errors.New("the gRPC target must be a Dwellir host on port 443")
+	}
+	return nil
+}
+
 func existingProjectKey(key api.APIKey, create string, daily, monthly *int) (string, error) {
 	if !key.Enabled {
 		return "", errors.New("the selected key is disabled")
@@ -260,7 +279,8 @@ func projectAPIError(err error, message string) error {
 }
 
 func projectEnv(node api.Node, key string) map[string]string {
-	values := map[string]string{"DWELLIR_API_KEY": key, "DWELLIR_RPC_URL": "", "DWELLIR_WSS_URL": ""}
+	// The gRPC target takes no key. A gRPC client sends DWELLIR_API_KEY in the x-api-key metadata header.
+	values := map[string]string{"DWELLIR_API_KEY": key, "DWELLIR_RPC_URL": "", "DWELLIR_WSS_URL": "", "DWELLIR_GRPC_TARGET": node.GRPC}
 	if node.HTTPS != "" {
 		values["DWELLIR_RPC_URL"] = strings.ReplaceAll(node.HTTPS, "<key>", key)
 	}
