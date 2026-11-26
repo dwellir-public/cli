@@ -154,19 +154,19 @@ func rotateServer(t *testing.T) *int32 {
 	return &rotations
 }
 
-type rotateRun struct {
+type keysRun struct {
 	stdout, stderr string
 	err            error
 }
 
-func runKeysRotate(t *testing.T, stdin string, terminal bool, args ...string) rotateRun {
+func runKeysRotate(t *testing.T, stdin string, terminal bool, args ...string) keysRun {
 	t.Helper()
 	return runKeysCommand(t, "rotate", stdin, terminal, args...)
 }
 
 // runKeysCommand runs dwellir keys <sub> with stdin as the answer to any
 // prompt. terminal sets whether stdin counts as a terminal.
-func runKeysCommand(t *testing.T, sub, stdin string, terminal bool, args ...string) rotateRun {
+func runKeysCommand(t *testing.T, sub, stdin string, terminal bool, args ...string) keysRun {
 	t.Helper()
 	t.Setenv("DWELLIR_CONFIG_DIR", t.TempDir())
 	resetOutputFlagsForTest(t)
@@ -196,7 +196,7 @@ func runKeysCommand(t *testing.T, sub, stdin string, terminal bool, args ...stri
 		rootCmd.SetArgs(nil)
 	})
 	err := Execute()
-	return rotateRun{stdout: stdout.String(), stderr: stderr.String(), err: err}
+	return keysRun{stdout: stdout.String(), stderr: stderr.String(), err: err}
 }
 
 func TestKeysRotateNeedsYesWhenItCannotPrompt(t *testing.T) {
