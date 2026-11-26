@@ -154,12 +154,19 @@ func rotateServer(t *testing.T) *int32 {
 	return &rotations
 }
 
-type rotateRun struct {
+type keysRun struct {
 	stdout, stderr string
 	err            error
 }
 
-func runKeysRotate(t *testing.T, stdin string, terminal bool, args ...string) rotateRun {
+func runKeysRotate(t *testing.T, stdin string, terminal bool, args ...string) keysRun {
+	t.Helper()
+	return runKeysCommand(t, "rotate", stdin, terminal, args...)
+}
+
+// runKeysCommand runs dwellir keys <sub> with stdin as the answer to any
+// prompt. terminal sets whether stdin counts as a terminal.
+func runKeysCommand(t *testing.T, sub, stdin string, terminal bool, args ...string) keysRun {
 	t.Helper()
 	t.Setenv("DWELLIR_CONFIG_DIR", t.TempDir())
 	resetOutputFlagsForTest(t)
@@ -171,7 +178,7 @@ func runKeysRotate(t *testing.T, stdin string, terminal bool, args ...string) ro
 	oldTelemetry := telemetryClient
 	stdinIsTerminal = func() bool { return terminal }
 	telemetryClient = &fakeTelemetry{}
-	args = append([]string{"keys", "rotate"}, args...)
+	args = append([]string{"keys", sub}, args...)
 	os.Args = append([]string{"dwellir"}, args...)
 
 	var stdout, stderr bytes.Buffer
@@ -184,11 +191,12 @@ func runKeysRotate(t *testing.T, stdin string, terminal bool, args ...string) ro
 		os.Args = oldArgs
 		telemetryClient = oldTelemetry
 		keyRotateYes = false
+		keyDeleteYes = false
 		rootCmd.SetIn(nil)
 		rootCmd.SetArgs(nil)
 	})
 	err := Execute()
-	return rotateRun{stdout: stdout.String(), stderr: stderr.String(), err: err}
+	return keysRun{stdout: stdout.String(), stderr: stderr.String(), err: err}
 }
 
 func TestKeysRotateNeedsYesWhenItCannotPrompt(t *testing.T) {
@@ -355,6 +363,134 @@ func TestKeysRotateExitCodes(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			tc.setup(t)
 			res := runKeysRotate(t, "", false, tc.args...)
+			if got := ExitCode(res.err); got != tc.want {
+				t.Fatalf("exit code = %d, want %d\n%s", got, tc.want, res.stdout)
+			}
+		})
+	}
+}
+
+// deleteServer serves one key named ci and its delete endpoint. It returns
+// the number of delete requests it received.
+func deleteServer(t *testing.T) *int32 {
+	t.Helper()
+	var deletes int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v4/organization/apikeys":
+			_, _ = w.Write([]byte(`[{"api_key":"` + testKeyValue + `","name":"ci","enabled":true}]`))
+		case r.Method == http.MethodDelete && r.URL.Path == "/v4/organization/apikeys/"+testKeyValue:
+			atomic.AddInt32(&deletes, 1)
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("DWELLIR_API_URL", server.URL)
+	t.Setenv("DWELLIR_TOKEN", "test-token")
+	return &deletes
+}
+
+func TestKeysDeleteNeedsYesWhenItCannotPrompt(t *testing.T) {
+	cases := map[string]struct {
+		terminal bool
+		args     []string
+	}{
+		"default in a terminal":     {true, []string{"ci"}},
+		"json in a terminal":        {true, []string{"ci", "--json"}},
+		"toon in a terminal":        {true, []string{"ci", "--toon"}},
+		"human without a terminal":  {false, []string{"ci", "--human"}},
+		"json answers are not read": {false, []string{"ci", "--json"}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			deletes := deleteServer(t)
+			res := runKeysCommand(t, "delete", "y\n", tc.terminal, tc.args...)
+			var rendered *output.RenderedError
+			if !errors.As(res.err, &rendered) || rendered.Code != "validation_error" {
+				t.Fatalf("expected a validation_error, got %v", res.err)
+			}
+			if got := ExitCode(res.err); got != exitValidation {
+				t.Fatalf("exit code = %d, want %d", got, exitValidation)
+			}
+			if *deletes != 0 {
+				t.Fatalf("expected no delete request, got %d", *deletes)
+			}
+			if !strings.Contains(res.stdout, "--yes") || !strings.Contains(res.stdout, "loses access") {
+				t.Fatalf("expected a hint naming --yes and the impact, got:\n%s", res.stdout)
+			}
+		})
+	}
+}
+
+func TestKeysDeletePromptCancels(t *testing.T) {
+	for name, answer := range map[string]string{"no": "n\n", "empty": "\n", "eof": ""} {
+		t.Run(name, func(t *testing.T) {
+			deletes := deleteServer(t)
+			res := runKeysCommand(t, "delete", answer, true, "ci", "--human")
+			if res.err != nil {
+				t.Fatalf("unexpected error: %v\n%s", res.err, res.stdout)
+			}
+			if *deletes != 0 {
+				t.Fatalf("expected no delete request, got %d", *deletes)
+			}
+			if !strings.Contains(res.stderr, `Delete API key "ci" (9f1c****6789)?`) ||
+				!strings.Contains(res.stderr, "loses access at once") {
+				t.Fatalf("expected a prompt that names the key and the impact, got:\n%s", res.stderr)
+			}
+			if !strings.Contains(res.stdout, "cancelled") {
+				t.Fatalf("expected a cancelled status, got:\n%s", res.stdout)
+			}
+		})
+	}
+}
+
+func TestKeysDeleteConfirmed(t *testing.T) {
+	cases := map[string]struct {
+		stdin    string
+		terminal bool
+		args     []string
+		want     string
+	}{
+		"y at the prompt":     {"y\n", true, []string{"ci", "--human"}, "Note: Requests that use the deleted key now fail."},
+		"yes at the prompt":   {"YES\n", true, []string{"ci", "--human"}, "Note: Requests that use the deleted key now fail."},
+		"yes with json":       {"", false, []string{"ci", "--yes", "--json"}, `"status":"deleted"`},
+		"short yes with toon": {"", false, []string{"ci", "-y", "--toon"}, "deleted"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			deletes := deleteServer(t)
+			res := runKeysCommand(t, "delete", tc.stdin, tc.terminal, tc.args...)
+			if res.err != nil {
+				t.Fatalf("unexpected error: %v\n%s", res.err, res.stdout)
+			}
+			if *deletes != 1 {
+				t.Fatalf("expected one delete request, got %d", *deletes)
+			}
+			if !strings.Contains(res.stdout, tc.want) {
+				t.Errorf("expected %q in output, got:\n%s", tc.want, res.stdout)
+			}
+			if strings.Contains(res.stdout+res.stderr, testKeyValue) {
+				t.Fatalf("output contains the full key:\n%s", res.stdout+res.stderr)
+			}
+		})
+	}
+}
+
+func TestKeysDeleteExitCodes(t *testing.T) {
+	cases := map[string]struct {
+		args []string
+		want int
+	}{
+		"missing argument": {[]string{"--yes", "--json"}, exitValidation},
+		"unknown key":      {[]string{"nope", "--yes", "--json"}, exitNotFound},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			deleteServer(t)
+			res := runKeysCommand(t, "delete", "", false, tc.args...)
 			if got := ExitCode(res.err); got != tc.want {
 				t.Fatalf("exit code = %d, want %d\n%s", got, tc.want, res.stdout)
 			}

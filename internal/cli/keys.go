@@ -25,9 +25,10 @@ var (
 	keyEnvVar       string
 	keyEnvReplace   bool
 	keyRotateYes    bool
+	keyDeleteYes    bool
 )
 
-// stdinIsTerminal reports whether keys rotate can ask for confirmation.
+// stdinIsTerminal reports whether a command can ask for confirmation.
 var stdinIsTerminal = func() bool {
 	return term.IsTerminal(int(os.Stdin.Fd()))
 }
@@ -138,8 +139,27 @@ var keysUpdateCmd = &cobra.Command{
 var keysDeleteCmd = &cobra.Command{
 	Use:   "delete <name>",
 	Short: "Delete an API key",
-	Args:  keyNameArg("dwellir keys delete ci-key"),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	Long: `Delete an API key.
+
+Deleting cannot be undone. Every application that uses the key loses
+access at once.
+
+Deleting needs confirmation: pass --yes, or pass --human in a terminal to
+be asked first. Without either, the command deletes nothing.
+
+Example:
+  dwellir keys delete ci-key --human
+  dwellir keys delete ci-key --yes --json`,
+	Args: keyNameArg("dwellir keys delete ci-key --yes"),
+	RunE: withRenderedExitCodes(func(cmd *cobra.Command, args []string) error {
+		// Same rule as keys rotate: prompt only in an explicit --human run.
+		canPrompt := humanOutput && isHumanOutput() && stdinIsTerminal()
+		if !keyDeleteYes && !canPrompt {
+			return getFormatter().Error("validation_error",
+				"Deleting an API key needs confirmation.",
+				"Deleting cannot be undone, and every application that uses the key loses access at once. "+
+					"Pass --yes to confirm, or --human in a terminal to be asked, for example: dwellir keys delete <name> --yes")
+		}
 		client, err := newAPIClient()
 		if err != nil {
 			return getFormatter().Error("not_authenticated", err.Error(), "")
@@ -148,12 +168,25 @@ var keysDeleteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if !keyDeleteYes {
+			confirmed, err := confirmPrompt(cmd, fmt.Sprintf(
+				"Delete API key %q (%s)? This cannot be undone, and every application that uses it loses access at once. [y/N]: ",
+				key.Name, key.APIKey.Masked()))
+			if err != nil {
+				return formatCommandError(err)
+			}
+			if !confirmed {
+				return getFormatter().Success("keys.delete", map[string]interface{}{
+					"name": key.Name, "key": key.APIKey.Masked(), "status": "cancelled",
+				})
+			}
+		}
 		result, err := api.NewKeysAPI(client).Delete(key.APIKey)
 		if err != nil {
 			return formatCommandError(err)
 		}
 		return getFormatter().Success("keys.delete", output.Notice{Data: deleteSuccessPayload(key, result), Text: deletedKeyNotice})
-	},
+	}),
 }
 
 func deleteSuccessPayload(key api.APIKey, result *api.DeleteKeyResult) map[string]interface{} {
@@ -393,6 +426,7 @@ func init() {
 	keysEnvCmd.Flags().BoolVar(&keyEnvReplace, "replace", false, "Replace an existing value")
 
 	keysRotateCmd.Flags().BoolVarP(&keyRotateYes, "yes", "y", false, "Skip the confirmation prompt")
+	keysDeleteCmd.Flags().BoolVarP(&keyDeleteYes, "yes", "y", false, "Skip the confirmation prompt")
 
 	keysCmd.AddCommand(keysListCmd, keysCreateCmd, keysUpdateCmd, keysDeleteCmd, keysRotateCmd, keysEnableCmd, keysDisableCmd, keysCopyCmd, keysEnvCmd)
 	rootCmd.AddCommand(keysCmd)

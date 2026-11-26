@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -18,11 +19,23 @@ const (
 
 func keysServer(t *testing.T) map[string]string {
 	t.Helper()
+	env, _ := keysServerCountingDeletes(t)
+	return env
+}
+
+// keysServerCountingDeletes serves one key named ci. The returned function
+// reports how many DELETE requests the key received.
+func keysServerCountingDeletes(t *testing.T) (map[string]string, func() int32) {
+	t.Helper()
+	var deletes atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v4/organization/apikeys":
 			_, _ = w.Write([]byte(`[{"api_key":"` + e2eKey + `","name":"ci","enabled":true}]`))
 		case "/v4/organization/apikeys/" + e2eKey:
+			if r.Method == http.MethodDelete {
+				deletes.Add(1)
+			}
 			_, _ = w.Write([]byte(`{"api_key":"` + e2eKey + `","name":"ci","enabled":false}`))
 		case "/v4/organization/apikeys/" + e2eKey + "/rotate":
 			if r.Method != http.MethodPost {
@@ -35,7 +48,7 @@ func keysServer(t *testing.T) map[string]string {
 		}
 	}))
 	t.Cleanup(server.Close)
-	return map[string]string{"DWELLIR_TOKEN": "test-token", "DWELLIR_API_URL": server.URL}
+	return map[string]string{"DWELLIR_TOKEN": "test-token", "DWELLIR_API_URL": server.URL}, deletes.Load
 }
 
 func TestKeyCommandsNeverPrintTheKey(t *testing.T) {
@@ -185,10 +198,31 @@ func TestDoctorMasksKeysInAPIErrors(t *testing.T) {
 	}
 }
 
+func TestKeysDeleteNeedsYesWithoutATerminal(t *testing.T) {
+	env, deletes := keysServerCountingDeletes(t)
+	for _, format := range []string{"--json", "--toon", "--human"} {
+		res := runCLIWithEnv(t, env, "keys", "delete", "ci", format)
+		output := res.stdout + res.stderr
+		if res.exitCode != 4 || !strings.Contains(output, "needs confirmation") || !strings.Contains(output, "--yes") {
+			t.Fatalf("%s: expected a confirmation error naming --yes, got %d\n%s", format, res.exitCode, output)
+		}
+		if format == "--json" && !strings.Contains(res.stdout, `"code":"validation_error"`) {
+			t.Fatalf("expected validation_error JSON, got: %s", res.stdout)
+		}
+	}
+	if got := deletes(); got != 0 {
+		t.Fatalf("expected no delete request, got %d", got)
+	}
+}
+
 func TestKeysDeleteExplainsTheReplacement(t *testing.T) {
-	res := runCLIWithEnv(t, keysServer(t), "keys", "delete", "ci", "--json")
+	env, deletes := keysServerCountingDeletes(t)
+	res := runCLIWithEnv(t, env, "keys", "delete", "ci", "--yes", "--json")
 	if res.exitCode != 0 || !strings.Contains(res.stdout, `"notice":"Requests that use the deleted key now fail`) {
 		t.Fatalf("expected a delete notice, got %d\n%s", res.exitCode, res.stdout)
+	}
+	if got := deletes(); got != 1 {
+		t.Fatalf("expected one delete request, got %d", got)
 	}
 }
 
