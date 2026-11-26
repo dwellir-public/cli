@@ -108,6 +108,7 @@ dwellir keys copy ci-key
 dwellir keys env ci-key
 dwellir keys disable ci-key
 dwellir keys rotate ci-key
+dwellir keys delete ci-key --yes
 ```
 
 The CLI never prints a full API key. Every output format shows keys masked, for example `9f1c****6789`.
@@ -120,6 +121,9 @@ Over SSH or in CI there is no clipboard, so use `keys env`.
 The key keeps its name, quotas, enabled state and IP whitelists.
 Rotating needs confirmation: pass `--yes`, or pass `--human` in a terminal to be asked first. Without either, the command rotates nothing.
 After rotating, run `keys copy` or `keys env <name> --replace` to use the new value.
+
+`keys delete` removes a key. Deleting cannot be undone, and every application that uses the key loses access at once.
+Deleting needs confirmation: pass `--yes`, or pass `--human` in a terminal to be asked first. Without either, the command deletes nothing.
 
 ### 5) Restrict keys to IP addresses
 
